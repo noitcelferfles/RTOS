@@ -1,0 +1,6 @@
+[submodule "External/MyLib"]
+	path = External/MyLib
+	url = https://github.com/noitcelferfles/MyLib
+[submodule "External/CMSIS"]
+	path = External/CMSIS
+	url = https://github.com/noitcelferfles/CMSIS
