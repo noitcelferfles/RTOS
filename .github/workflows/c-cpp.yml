@@ -29,7 +29,10 @@ jobs:
         cd ./build
         ls
     - name: Make
-      run: ninja
+      run: |
+        ls
+        cd ./build
+        ninja
     - name: Save library
       uses: actions/upload-artifact@v4
       with:
