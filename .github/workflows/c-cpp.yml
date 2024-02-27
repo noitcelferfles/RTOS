@@ -1,0 +1,38 @@
+name: C/C++ CI
+
+on:
+  push:
+    branches: [ "master" ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      with:
+        submodules: 'true'
+    - name: Automake
+      run: |
+        meson setup --cross-file ./compilation_setup.txt build
+        cd ./build
+    - name: Make
+      run: ninja
+    - name: Save library
+      uses: actions/upload-artifact@v4
+      with:
+        name: libRTOS.a
+        path: libRTOS.a
+    - name: Save list
+      uses: actions/upload-artifact@v4
+      with:
+        name: RTOS.list
+        path: RTOS.list
+    - name: Save size
+      uses: actions/upload-artifact@v4
+      with:
+        name: RTOS.size
+        path: RTOS.size
