@@ -18,9 +18,9 @@ jobs:
         token: ${{ secrets.PAT }}
     - name: Download binaries
       run: |
-        apt update
-        apt install gcc-arm-none-eabi
-        apt install meson
+        sudo apt-get update
+        sudo apt-get install gcc-arm-none-eabi
+        sudo apt-get install meson
     - name: Automake
       run: |
         meson setup --cross-file ./compilation_setup.txt build
@@ -32,13 +32,16 @@ jobs:
       with:
         name: libRTOS.a
         path: libRTOS.a
+        retention-days: 1
     - name: Save list
       uses: actions/upload-artifact@v4
       with:
         name: RTOS.list
         path: RTOS.list
+        retention-days: 1
     - name: Save size
       uses: actions/upload-artifact@v4
       with:
         name: RTOS.size
         path: RTOS.size
+        retention-days: 1
