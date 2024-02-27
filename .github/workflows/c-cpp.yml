@@ -27,21 +27,23 @@ jobs:
       run: |
         cd ./build      # must be executed in the same run, the working directory gets reset for every run
         ninja
-    - name: Save library
+    - name: Save compilation results
       uses: actions/upload-artifact@v4
       with:
-        name: libRTOS.a
-        path: ./build/libRTOS.a
+        name: RTOS
+        path: |
+          ./build/libRTOS.a
+          ./build/RTOS.list
+          ./build/RTOS.size
         retention-days: 1
-    - name: Save list
+    - name: Save compilation results
       uses: actions/upload-artifact@v4
       with:
-        name: RTOS.list
-        path: ./build/RTOS.list
-        retention-days: 1
-    - name: Save size
-      uses: actions/upload-artifact@v4
-      with:
-        name: RTOS.size
-        path: ./build/RTOS.size
+        name: Example1
+        path: |
+          ./build/Examples/Example1/example1.elf
+          ./build/Examples/Example1/example1.list
+          ./build/Examples/Example1/example1.map
+          ./build/Examples/Example1/example1.size
+          ./build/RTOS.map
         retention-days: 1

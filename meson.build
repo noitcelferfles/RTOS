@@ -7,6 +7,7 @@ compiler_optimization = 'Os'
 
 preprocessor_tags = [
     'DEBUG',
+	'TX_NO_ASSERT',
     'STM32',
     'STM32F2',
     'STM32F207GZTx',
@@ -27,7 +28,7 @@ out_name = 'RTOS'
 compiler_args = [   # default arguments
     '-mthumb',
     '-mfloat-abi=soft',
-    '--specs=nosys.specs',
+    '--specs=nano.specs',
 
     '-fdata-sections',          # each variable on a seperate section
     '-ffunction-sections',      # each function on a seperate section
@@ -38,7 +39,7 @@ compiler_args = [   # default arguments
     ]
 
 cpu = host_machine.cpu() == 'cortex-m0+' ? 'cortex-m0plus' : host_machine.cpu()
-compiler_args += '-mcpu=@0@'.format(cpu)
+compiler_args = ['-mcpu=@0@'.format(cpu)] + compiler_args
 
 compiler_args += ['-@0@'.format(compiler_optimization)]
 
@@ -91,18 +92,31 @@ out = static_library('@0@'.format(out_name),
             include_directories : header_directories
             )
 
-assembly_dump = custom_target(
+custom_target(
             'object dump',
             build_by_default : true,
             capture : true,
             output : ['@0@.list'.format(out_name)],
-            command : [objdump, '-h', '-S', 'lib@0@.a'.format(out_name)],
+            command : [objdump, '-x', '-S', 'lib@0@.a'.format(out_name)],
             depends : [out])
 
-size_dump = custom_target(
+custom_target(
             'size dump',
             build_by_default : true,
             capture : true,
             output : ['@0@.size'.format(out_name)],
             command : [size, 'lib@0@.a'.format(out_name)],
             depends : [out])
+
+
+
+#=============================== Compile examples =================================
+
+example_dep = declare_dependency(
+            link_with : out,
+            )
+
+example_includes = ['External/CMSIS/Include', 'External/CMSIS/Device/ST/STM32F2xx/Include']
+
+subdir('./Examples/Example1')
+
