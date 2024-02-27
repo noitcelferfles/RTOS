@@ -22,9 +22,12 @@ jobs:
         sudo apt-get install gcc-arm-none-eabi
         sudo apt-get install meson
     - name: Automake
+      run: meson setup --cross-file ./compilation_setup.txt build
+    - name: Change working directory
       run: |
-        meson setup --cross-file ./compilation_setup.txt build
+        ls
         cd ./build
+        ls
     - name: Make
       run: ninja
     - name: Save library
