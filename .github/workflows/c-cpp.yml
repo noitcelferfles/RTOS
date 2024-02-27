@@ -16,6 +16,11 @@ jobs:
       with:
         submodules: 'true'
         token: ${{ secrets.PAT }}
+    - name: Download binaries
+      run: |
+        apt update
+        apt install gcc-arm-none-eabi
+        apt install meson
     - name: Automake
       run: |
         meson setup --cross-file ./compilation_setup.txt build
