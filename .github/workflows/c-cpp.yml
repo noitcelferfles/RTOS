@@ -23,31 +23,25 @@ jobs:
         sudo apt-get install meson
     - name: Automake
       run: meson setup --cross-file ./compilation_setup.txt build
-    - name: Change working directory
-      run: |
-        ls
-        cd ./build
-        ls
     - name: Make
       run: |
-        ls
-        cd ./build
+        cd ./build      # must be executed in the same run, the working directory gets reset for every run
         ninja
     - name: Save library
       uses: actions/upload-artifact@v4
       with:
         name: libRTOS.a
-        path: libRTOS.a
+        path: ./build/libRTOS.a
         retention-days: 1
     - name: Save list
       uses: actions/upload-artifact@v4
       with:
         name: RTOS.list
-        path: RTOS.list
+        path: ./build/RTOS.list
         retention-days: 1
     - name: Save size
       uses: actions/upload-artifact@v4
       with:
         name: RTOS.size
-        path: RTOS.size
+        path: ./build/RTOS.size
         retention-days: 1
