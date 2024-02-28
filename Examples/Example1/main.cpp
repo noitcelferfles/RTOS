@@ -18,7 +18,6 @@ RTOS::Mutex g_mutex;
 RTOS::MessageQueue g_message_red;
 
 
-
 void enable_rcc(void)
 {
 	g_mutex_rcc.lock();
@@ -251,6 +250,18 @@ size_t send_uart(size_t arg)
 }
 
 
+RTOS::Thread g_toggle_green;
+RTOS::Thread g_toggle_red;
+RTOS::Thread g_toggle_blue;
+RTOS::Thread g_drive_blue;
+RTOS::Thread g_acquire_lock;
+RTOS::Thread g_send_uart;
+RTOS::Thread g_useless_work[5];
+RTOS::Thread g_useless_work_3[5];
+RTOS::Thread g_useless_work_2[30];
+RTOS::Thread g_manage_useless_work;
+
+
 size_t os_main(size_t arg)
 {
 	g_message_red.initialize(5);
@@ -264,36 +275,34 @@ size_t os_main(size_t arg)
 	}
 	size_t volatile delay = DWT->CYCCNT - g_time_stamp; delay;
 
+//	g_acquire_lock.initialize(&acquire_lock, 3, 0x200);
 
-//	RTOS::create_thread(&acquire_lock, 3, 0x200);
+//	g_send_uart.initialize(&send_uart, 5, 0x200);
 
-//	RTOS::create_thread(&send_uart, 5, 0x200);
-
-	RTOS::create_thread(&toggle_green, 5, 0x200);
+	g_toggle_green.initialize(&toggle_green, 5, 0x200);
 	RTOS::sleep(333);
-	RTOS::create_thread(&toggle_red, 5, 0x200);
-	RTOS::create_thread(&drive_red, 1, 0x200);
+	g_toggle_red.initialize(&toggle_red, 5, 0x200);
+	g_drive_blue.initialize(&drive_red, 1, 0x200);
 	RTOS::sleep(333);
-	RTOS::create_thread(&toggle_blue, 5, 0x200);
+	g_toggle_blue.initialize(&toggle_blue, 5, 0x200);
 	RTOS::sleep(333);
 
-	for (size_t i = 0; i < 5; i++)
+	for (size_t i = 0; i < sizeof(g_useless_work) / sizeof(RTOS::Thread); i++)
 	{
-		RTOS::create_thread(&useless_work, 3, 0x200);
+		g_useless_work[i].initialize(&useless_work, 3, 0x200);
 	}
-	for (size_t i = 0; i < 5; i++)
+	for (size_t i = 0; i < sizeof(g_useless_work_3) / sizeof(RTOS::Thread); i++)
 	{
-		RTOS::create_thread(&useless_work_3, 1, 3, 0x200);
-	}
-
-	for (size_t i = 0; i < 30; i++)
-	{
-		RTOS::create_thread(&useless_work_2, 1000, 4, 0x200);
+		g_useless_work_3[i].initialize(&useless_work_3, 1, 3, 0x200);
 	}
 
+	for (size_t i = 0; i < sizeof(g_useless_work_2) / sizeof(RTOS::Thread); i++)
+	{
+		g_useless_work_2[i].initialize(&useless_work_2, 1000, 4, 0x200);
+	}
 
 
-	//	RTOS::create_thread(&manage_useless_work, 2, 0x200);
+	//	g_manage_useless_work.initialize(&manage_useless_work, 2, 0x200);
 
 	return 0;
 }

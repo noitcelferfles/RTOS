@@ -7,7 +7,6 @@
 
 #include "rtos_scheduler.hpp"
 #include "rtos_impl.hpp"
-#include "rtos_thread_mgr.hpp"
 #include "rtos_profiler.hpp"
 #include "./Source/Driver/cortexm3_core.hpp"
 #include "./External/MyLib/tx_assert.h"
@@ -23,7 +22,6 @@ namespace RTOS
 extern RTOSImpl g_rtos;
 
 static Scheduler & g_scheduler = g_rtos.m_scheduler;
-static ThreadMgr & g_thread_mgr = g_rtos.m_thread_mgr;
 static SystemTimer & g_system_timer = g_rtos.m_system_timer;
 
 
@@ -31,7 +29,7 @@ static SystemTimer & g_system_timer = g_rtos.m_system_timer;
 
 
 
-void Thread::initialize(FunctionPtr entry, size_t entry_argument, size_t priority, size_t stack_size)
+void ThreadImpl::initialize_self(FunctionPtr entry, size_t entry_argument, size_t priority, size_t stack_size)
 {
 	TX_ASSERT((stack_size & 0b111) == 0);
 	TX_ASSERT(m_state == State::Reset);
@@ -51,7 +49,7 @@ void Thread::initialize(FunctionPtr entry, size_t entry_argument, size_t priorit
 	populate_stack_context();
 }
 
-struct Thread::StackContext
+struct ThreadImpl::StackContext
 {
 	size_t	r4;
 	size_t	r5;
@@ -71,7 +69,7 @@ struct Thread::StackContext
 	size_t	psr;
 };
 
-void Thread::populate_stack_context(void)
+void ThreadImpl::populate_stack_context(void)
 {
 	m_sp = (void *)((size_t)m_sp - sizeof(StackContext));
 	StackContext * context = (StackContext *) m_sp;
@@ -90,21 +88,7 @@ void Thread::populate_stack_context(void)
 	}
 }
 
-Thread::~Thread(void)
-{
-	TX_ASSERT(m_state == State::Reset || m_state == State::Terminated);
-	if (m_state == State::Terminated)
-	{
-		free((void *)m_stack_begin);
-	}
-}
 
-void Thread::unitialize(void)
-{
-	TX_ASSERT(m_state == State::Terminated);
-	m_state = State::Reset;
-	free((void *)m_stack_begin);
-}
 
 
 
@@ -125,11 +109,11 @@ void ExpireHeap::initialize(void)
 
 void Scheduler::thread_entry(void)
 {
-	Thread & thread = *g_scheduler.m_core.m_thread_on_core;
+	ThreadImpl & thread = *g_scheduler.m_core.m_thread_on_core;
 
 	(*thread.m_entry)(thread.m_entry_argument); // Execute user-space code
 
-	TX_ASSERT(*((size_t *)thread.m_stack_begin) == Thread::StackLimitIdentifier); // Failing means potential stack overflow
+	TX_ASSERT(*((size_t *)thread.m_stack_begin) == ThreadImpl::StackLimitIdentifier); // Failing means potential stack overflow
 
 
 	Mutex::unlock_all_mutex(thread);
@@ -203,7 +187,7 @@ extern "C" __attribute__((naked)) void PendSV_Handler(void)
 
 
 
-void Scheduler::set_effective_priority(Thread & thread, size_t priority)
+void Scheduler::set_effective_priority(ThreadImpl & thread, size_t priority)
 {
 	thread.m_effective_priority = priority;
 
@@ -233,22 +217,22 @@ void Scheduler::increase_priority_of_blocking_mutexes_and_owners(Mutex * blockin
 
 
 
-void Scheduler::change_paused_thread_to_ready(Thread & thread)
+void Scheduler::change_paused_thread_to_ready(ThreadImpl & thread)
 {
-	TX_ASSERT(thread.m_state == Thread::State::Paused);
+	TX_ASSERT(thread.m_state == ThreadImpl::State::Paused);
 
-	thread.m_state = Thread::State::Ready;
+	thread.m_state = ThreadImpl::State::Ready;
 	thread.m_priority_list = &m_ready_threads;
 	m_ready_threads.insert(thread.m_priority_link, thread.m_effective_priority);
 }
 
-void Scheduler::change_ready_thread_to_paused(Thread & thread)
+void Scheduler::change_ready_thread_to_paused(ThreadImpl & thread)
 {
-	TX_ASSERT(thread.m_state == Thread::State::Ready);
+	TX_ASSERT(thread.m_state == ThreadImpl::State::Ready);
 
 	thread.m_priority_list->remove_link(thread.m_priority_link);
 	thread.m_priority_list = nullptr;
-	thread.m_state = Thread::State::Paused;
+	thread.m_state = ThreadImpl::State::Paused;
 }
 
 void Scheduler::change_top_ready_thread_to_running(CoreInfo & core)
@@ -260,8 +244,8 @@ void Scheduler::change_top_ready_thread_to_running(CoreInfo & core)
 	{
 		TXLib::LinkedCycleUnsafe * link = m_ready_threads.pop_link(waiting_priority);
 
-		core.m_thread_running = & Thread::get_thread_from_m_priority_link(*link);
-		core.m_thread_running->m_state = Thread::State::Running;
+		core.m_thread_running = & ThreadImpl::get_thread_from_m_priority_link(*link);
+		core.m_thread_running->m_state = ThreadImpl::State::Running;
 		core.m_thread_running->m_priority_list = nullptr;
 	}
 }
@@ -273,13 +257,13 @@ bool Scheduler::exchange_top_ready_thread_with_running_thread(CoreInfo & core, s
 	{
 		TXLib::LinkedCycleUnsafe * link = m_ready_threads.pop_link(waiting_priority);
 
-		Thread & thread_exit = *core.m_thread_running;
-		thread_exit.m_state = Thread::State::Ready;
+		ThreadImpl & thread_exit = *core.m_thread_running;
+		thread_exit.m_state = ThreadImpl::State::Ready;
 		thread_exit.m_priority_list = &m_ready_threads;
 		m_ready_threads.insert(thread_exit.m_priority_link, thread_exit.m_effective_priority);
 
-		core.m_thread_running = & Thread::get_thread_from_m_priority_link(*link);
-		core.m_thread_running->m_state = Thread::State::Running;
+		core.m_thread_running = & ThreadImpl::get_thread_from_m_priority_link(*link);
+		core.m_thread_running->m_state = ThreadImpl::State::Running;
 		core.m_thread_running->m_priority_list = nullptr;
 
 		return true;
@@ -292,23 +276,23 @@ bool Scheduler::exchange_top_ready_thread_with_running_thread(CoreInfo & core, s
 
 void Scheduler::change_running_thread_to_terminated(CoreInfo & core)
 {
-	TX_ASSERT(core.m_thread_running->m_state == Thread::State::Running);
+	TX_ASSERT(core.m_thread_running->m_state == ThreadImpl::State::Running);
 
-	core.m_thread_running->m_state = Thread::State::Terminated;
+	core.m_thread_running->m_state = ThreadImpl::State::Terminated;
 	core.m_thread_running = nullptr;
 }
 
 void Scheduler::change_running_thread_to_paused(CoreInfo & core)
 {
-	TX_ASSERT(core.m_thread_running->m_state == Thread::State::Running);
+	TX_ASSERT(core.m_thread_running->m_state == ThreadImpl::State::Running);
 
-	core.m_thread_running->m_state = Thread::State::Paused;
+	core.m_thread_running->m_state = ThreadImpl::State::Paused;
 	core.m_thread_running = nullptr;
 }
 
 void Scheduler::change_running_thread_to_sleeping(CoreInfo & core, TimeType expire_time)
 {
-	core.m_thread_running->m_state = Thread::State::Sleeping;
+	core.m_thread_running->m_state = ThreadImpl::State::Sleeping;
 	core.m_thread_running->m_expire_time = expire_time;
 
 	if (UseListVersionForThreadSleep)
@@ -327,7 +311,7 @@ void Scheduler::change_running_thread_to_mutexblocked(CoreInfo & core, Mutex & b
 {
 	increase_priority_of_blocking_mutexes_and_owners(&blocking_mutex, core.m_thread_running->m_effective_priority);
 
-	core.m_thread_running->m_state = Thread::State::BlockedByMutex;
+	core.m_thread_running->m_state = ThreadImpl::State::BlockedByMutex;
 	core.m_thread_running->m_blocking_mutex = &blocking_mutex;
 	core.m_thread_running->m_priority_list = &blocking_mutex.m_blocked_threads;
 	blocking_mutex.m_blocked_threads.insert(core.m_thread_running->m_priority_link, core.m_thread_running->m_effective_priority);
@@ -339,7 +323,7 @@ void Scheduler::change_running_thread_to_softmutexblocked(CoreInfo & core, Mutex
 {
 	increase_priority_of_blocking_mutexes_and_owners(&blocking_mutex, core.m_thread_running->m_effective_priority);
 
-	core.m_thread_running->m_state = Thread::State::SoftBlockedByMutex;
+	core.m_thread_running->m_state = ThreadImpl::State::SoftBlockedByMutex;
 	core.m_thread_running->m_blocking_mutex = &blocking_mutex;
 	core.m_thread_running->m_priority_list = &blocking_mutex.m_blocked_threads;
 	core.m_thread_running->m_expire_time = expire_time;
@@ -359,7 +343,7 @@ void Scheduler::change_running_thread_to_softmutexblocked(CoreInfo & core, Mutex
 
 void Scheduler::change_running_thread_to_messageblocked(CoreInfo & core, MessageQueue & queue)
 {
-	core.m_thread_running->m_state = Thread::State::BlockedByMessage;
+	core.m_thread_running->m_state = ThreadImpl::State::BlockedByMessage;
 	core.m_thread_running->m_priority_list = &queue.m_blocked_threads;
 	queue.m_blocked_threads.insert(core.m_thread_running->m_priority_link, core.m_thread_running->m_effective_priority);
 	core.m_thread_running = nullptr;
@@ -367,7 +351,7 @@ void Scheduler::change_running_thread_to_messageblocked(CoreInfo & core, Message
 
 void Scheduler::change_running_thread_to_softmessageblocked(CoreInfo & core, MessageQueue & queue, TimeType expire_time)
 {
-	core.m_thread_running->m_state = Thread::State::SoftBlockedByMessage;
+	core.m_thread_running->m_state = ThreadImpl::State::SoftBlockedByMessage;
 	core.m_thread_running->m_priority_list = &queue.m_blocked_threads;
 	core.m_thread_running->m_expire_time = expire_time;
 	queue.m_blocked_threads.insert(core.m_thread_running->m_priority_link, core.m_thread_running->m_effective_priority);
@@ -401,18 +385,18 @@ void Scheduler::change_expired_thread_to_ready(TimeType time)
 	}
 }
 
-void Scheduler::change_sleeping_thread_to_sleepingpaused(Thread & thread)
+void Scheduler::change_sleeping_thread_to_sleepingpaused(ThreadImpl & thread)
 {
-	TX_ASSERT(thread.m_state == Thread::State::Sleeping);
+	TX_ASSERT(thread.m_state == ThreadImpl::State::Sleeping);
 
-	thread.m_state = Thread::State::SleepingAndPaused;
+	thread.m_state = ThreadImpl::State::SleepingAndPaused;
 }
 
-void Scheduler::change_sleepingpaused_thread_to_sleeping(Thread & thread)
+void Scheduler::change_sleepingpaused_thread_to_sleeping(ThreadImpl & thread)
 {
-	TX_ASSERT(thread.m_state == Thread::State::SleepingAndPaused);
+	TX_ASSERT(thread.m_state == ThreadImpl::State::SleepingAndPaused);
 
-	thread.m_state = Thread::State::SleepingAndPaused;
+	thread.m_state = ThreadImpl::State::SleepingAndPaused;
 }
 
 void Scheduler::change_top_mutexblocked_thread_to_ready(Mutex & mutex)
@@ -421,10 +405,10 @@ void Scheduler::change_top_mutexblocked_thread_to_ready(Mutex & mutex)
 	if (blocked_priority < PriorityList::INVALID_PRIORITY)
 	{
 		TXLib::LinkedCycleUnsafe * link = mutex.m_blocked_threads.pop_link(blocked_priority);
-		Thread & thread = Thread::get_thread_from_m_priority_link(*link);
-		TX_ASSERT(thread.m_state == Thread::State::BlockedByMutex || thread.m_state == Thread::State::SoftBlockedByMutex);
+		ThreadImpl & thread = ThreadImpl::get_thread_from_m_priority_link(*link);
+		TX_ASSERT(thread.m_state == ThreadImpl::State::BlockedByMutex || thread.m_state == ThreadImpl::State::SoftBlockedByMutex);
 
-		if (thread.m_state == Thread::State::SoftBlockedByMutex)
+		if (thread.m_state == ThreadImpl::State::SoftBlockedByMutex)
 		{
 			if (UseListVersionForSoftBlockExpiration)
 			{
@@ -437,20 +421,20 @@ void Scheduler::change_top_mutexblocked_thread_to_ready(Mutex & mutex)
 			}
 		}
 
-		thread.m_state = Thread::State::Ready;
+		thread.m_state = ThreadImpl::State::Ready;
 		thread.m_blocking_mutex = nullptr;
 		thread.m_priority_list = &m_ready_threads;
 		m_ready_threads.insert(*link, thread.m_effective_priority);
 	}
 }
 
-void Scheduler::change_mutexblocked_thread_to_paused(Thread & thread)
+void Scheduler::change_mutexblocked_thread_to_paused(ThreadImpl & thread)
 {
-	TX_ASSERT(thread.m_state == Thread::State::BlockedByMutex);
+	TX_ASSERT(thread.m_state == ThreadImpl::State::BlockedByMutex);
 
 	thread.m_priority_list->remove_link(thread.m_priority_link);
 	thread.m_priority_list = nullptr;
-	thread.m_state = Thread::State::Paused;
+	thread.m_state = ThreadImpl::State::Paused;
 	thread.m_blocking_mutex = nullptr;
 }
 
@@ -460,10 +444,10 @@ void Scheduler::change_top_messageblocked_thread_to_ready(MessageQueue & queue)
 	if (blocked_priority < PriorityList::INVALID_PRIORITY)
 	{
 		TXLib::LinkedCycleUnsafe * link = queue.m_blocked_threads.pop_link(blocked_priority);
-		Thread & thread = Thread::get_thread_from_m_priority_link(*link);
-		TX_ASSERT(thread.m_state == Thread::State::BlockedByMessage || thread.m_state == Thread::State::SoftBlockedByMessage);
+		ThreadImpl & thread = ThreadImpl::get_thread_from_m_priority_link(*link);
+		TX_ASSERT(thread.m_state == ThreadImpl::State::BlockedByMessage || thread.m_state == ThreadImpl::State::SoftBlockedByMessage);
 
-		if (thread.m_state == Thread::State::SoftBlockedByMessage)
+		if (thread.m_state == ThreadImpl::State::SoftBlockedByMessage)
 		{
 			if (UseListVersionForSoftBlockExpiration)
 			{
@@ -476,19 +460,19 @@ void Scheduler::change_top_messageblocked_thread_to_ready(MessageQueue & queue)
 			}
 		}
 
-		thread.m_state = Thread::State::Ready;
+		thread.m_state = ThreadImpl::State::Ready;
 		thread.m_priority_list = &m_ready_threads;
 		m_ready_threads.insert(thread.m_priority_link, thread.m_effective_priority);
 	}
 }
 
-void Scheduler::change_messageblocked_thread_to_paused(Thread & thread)
+void Scheduler::change_messageblocked_thread_to_paused(ThreadImpl & thread)
 {
-	TX_ASSERT(thread.m_state == Thread::State::BlockedByMessage);
+	TX_ASSERT(thread.m_state == ThreadImpl::State::BlockedByMessage);
 
 	thread.m_priority_list->remove_link(thread.m_priority_link);
 	thread.m_priority_list = nullptr;
-	thread.m_state = Thread::State::Paused;
+	thread.m_state = ThreadImpl::State::Paused;
 }
 
 
@@ -500,7 +484,7 @@ void Scheduler::change_expired_sleeping_thread_to_ready_version_list(TimeType ti
 
 	while (link != &m_expiration_list.get_null_link())
 	{
-		Thread & thread = Thread::get_thread_from_m_expire_link(*link);
+		ThreadImpl & thread = ThreadImpl::get_thread_from_m_expire_link(*link);
 
 		if (thread.m_expire_time > time) {break;}
 
@@ -508,23 +492,23 @@ void Scheduler::change_expired_sleeping_thread_to_ready_version_list(TimeType ti
 
 		switch (thread.m_state)
 		{
-		case Thread::State::Sleeping:
+		case ThreadImpl::State::Sleeping:
 			m_expiration_list.remove(*link);
 			m_ready_threads.insert(thread.m_priority_link, thread.m_effective_priority);
 			thread.m_priority_list = &m_ready_threads;
-			thread.m_state = Thread::State::Ready;
+			thread.m_state = ThreadImpl::State::Ready;
 			break;
-		case Thread::State::SleepingAndPaused:
+		case ThreadImpl::State::SleepingAndPaused:
 			m_expiration_list.remove(*link);
-			thread.m_state = Thread::State::Paused;
+			thread.m_state = ThreadImpl::State::Paused;
 			break;
-		case Thread::State::SoftBlockedByMessage:
-		case Thread::State::SoftBlockedByMutex:
+		case ThreadImpl::State::SoftBlockedByMessage:
+		case ThreadImpl::State::SoftBlockedByMutex:
 			m_expiration_list.remove(*link);
 			thread.m_priority_list->remove_link(thread.m_priority_link);
 			m_ready_threads.insert(thread.m_priority_link, thread.m_effective_priority);
 			thread.m_priority_list = &m_ready_threads;
-			thread.m_state = Thread::State::Ready;
+			thread.m_state = ThreadImpl::State::Ready;
 			break;
 		default:
 			TX_ASSERT(0);
@@ -542,17 +526,17 @@ void Scheduler::change_expired_sleeping_thread_to_ready_version_heap(TimeType ti
 	while (m_sleep_heap.get_size() > 0)
 	{
 		if (m_sleep_heap.get_top()->m_expire_time > time) {break;}
-		Thread & thread = *m_sleep_heap.pop_top();
+		ThreadImpl & thread = *m_sleep_heap.pop_top();
 
 		switch (thread.m_state)
 		{
-		case Thread::State::Sleeping:
+		case ThreadImpl::State::Sleeping:
 			m_ready_threads.insert(thread.m_priority_link, thread.m_effective_priority);
 			thread.m_priority_list = &m_ready_threads;
-			thread.m_state = Thread::State::Ready;
+			thread.m_state = ThreadImpl::State::Ready;
 			break;
-		case Thread::State::SleepingAndPaused:
-			thread.m_state = Thread::State::Paused;
+		case ThreadImpl::State::SleepingAndPaused:
+			thread.m_state = ThreadImpl::State::Paused;
 			break;
 		default:
 			TX_ASSERT(0);
@@ -565,16 +549,16 @@ void Scheduler::change_expired_softblocked_thread_to_ready_version_heap(TimeType
 	while (m_expire_heap.get_size() > 0)
 	{
 		if (m_expire_heap.get_top()->m_expire_time > time) {break;}
-		Thread & thread = *m_expire_heap.pop_top();
+		ThreadImpl & thread = *m_expire_heap.pop_top();
 
-		TX_ASSERT(thread.m_state == Thread::State::SoftBlockedByMessage
-				|| thread.m_state == Thread::State::SoftBlockedByMutex);
+		TX_ASSERT(thread.m_state == ThreadImpl::State::SoftBlockedByMessage
+				|| thread.m_state == ThreadImpl::State::SoftBlockedByMutex);
 
 		m_expire_heap.remove(thread);
 		thread.m_priority_list->remove_link(thread.m_priority_link);
 		m_ready_threads.insert(thread.m_priority_link, thread.m_effective_priority);
 		thread.m_priority_list = &m_ready_threads;
-		thread.m_state = Thread::State::Ready;
+		thread.m_state = ThreadImpl::State::Ready;
 	}
 }
 
@@ -623,7 +607,7 @@ void Scheduler::enter_sleep_mode(void)
 
 
 
-extern "C" void idle_thread(void)
+extern "C" void Scheduler::idle_thread(void) // Extern "C" is needed for the linker to find @_estack
 {
 	extern uint32_t _estack;
 	__asm volatile(
@@ -653,7 +637,7 @@ TimeType Scheduler::get_latest_wakeup_time_in_tick(TimeType time_now)
 
 	if (&m_expiration_list.get_next_thread_link() != &m_expiration_list.get_null_link())
 	{
-		Thread & thread = Thread::get_thread_from_m_expire_link(m_expiration_list.get_next_thread_link());
+		ThreadImpl & thread = ThreadImpl::get_thread_from_m_expire_link(m_expiration_list.get_next_thread_link());
 		if (thread.m_expire_time - 1 < expire_time)
 		{
 			expire_time = thread.m_expire_time - 1;
@@ -714,34 +698,34 @@ void Scheduler::switch_context(void)
 {
 	CoreInterrupt::trigger_pendsv_interrupt();
 
-	TX_ASSERT(*((size_t *)m_core.m_thread_on_core->m_stack_begin) == Thread::StackLimitIdentifier); // Failing means potential stack overflow
+	TX_ASSERT(*((size_t *)m_core.m_thread_on_core->m_stack_begin) == ThreadImpl::StackLimitIdentifier); // Failing means potential stack overflow
 }
 
 
-void Scheduler::pause_thread_impl(Thread & thread)
+void Scheduler::pause_thread_impl(ThreadImpl & thread)
 {
 	switch (thread.m_state)
 	{
-	case Thread::State::Ready:
+	case ThreadImpl::State::Ready:
 		g_scheduler.change_ready_thread_to_paused(thread);
 		break;
-	case Thread::State::BlockedByMutex:
+	case ThreadImpl::State::BlockedByMutex:
 		g_scheduler.change_mutexblocked_thread_to_paused(thread);
 		break;
-	case Thread::State::BlockedByMessage:
+	case ThreadImpl::State::BlockedByMessage:
 		g_scheduler.change_messageblocked_thread_to_paused(thread);
 		break;
-	case Thread::State::Sleeping:
+	case ThreadImpl::State::Sleeping:
 		g_scheduler.change_sleeping_thread_to_sleepingpaused(thread);
 		break;
-	case Thread::State::Running:  // TODO: This does not work for thread running on a different core
+	case ThreadImpl::State::Running:  // TODO: This does not work for thread running on a different core
 		TX_ASSERT(&thread == m_core.m_thread_running);
 		change_running_thread_to_paused(m_core);
 		change_top_ready_thread_to_running(m_core);
 		switch_context();
 		break;
-	case Thread::State::Paused:
-	case Thread::State::SleepingAndPaused:
+	case ThreadImpl::State::Paused:
+	case ThreadImpl::State::SleepingAndPaused:
 		break;
 	default:
 		TX_ASSERT(0);
@@ -765,7 +749,7 @@ void Scheduler::initialize(FunctionPtr entry, size_t stack_size)
 	m_idle_thread.initialize(nullptr, 0, PriorityList::MIN_PRIORITY, 0x100);
 	m_core.m_thread_running = &m_idle_thread;
 	m_core.m_thread_on_core = &m_idle_thread;
-	m_idle_thread.m_state = Thread::State::Running;
+	m_idle_thread.m_state = ThreadImpl::State::Running;
 
 	m_first_user_thread.initialize(entry, 0, PriorityList::MAX_PRIORITY, stack_size);
 	change_paused_thread_to_ready(m_first_user_thread);
@@ -793,18 +777,85 @@ void Scheduler::systick_update(TimeType time)
 	lock_release();
 }
 
-void Scheduler::kill_thread(Thread & thread)
+void Scheduler::kill_thread(ThreadImpl & thread)
 {
-	g_scheduler.lock_acquire();
+	lock_acquire();
 	RTOS_PROFILER_START("kill_thread");
 
 	pause_thread_impl(thread);
-	thread.m_state = Thread::State::Terminated;
+	thread.m_state = ThreadImpl::State::Terminated;
 
 	RTOS_PROFILER_STOP("kill_thread");
-	g_scheduler.lock_release();
+	lock_release();
 
 	Mutex::unlock_all_mutex(thread);
+}
+
+void Scheduler::pause_thread(ThreadImpl & thread)
+{
+	lock_acquire();
+	RTOS_PROFILER_START("pause_thread");
+
+	pause_thread_impl(thread);
+
+	RTOS_PROFILER_STOP("pause_thread");
+	lock_release();
+}
+
+void Scheduler::unpause_thread(ThreadImpl & thread)
+{
+	lock_acquire();
+	RTOS_PROFILER_START("unpause_thread");
+
+	switch (thread.m_state)
+	{
+	case ThreadImpl::State::Paused:
+		change_paused_thread_to_ready(thread);
+		break;
+	case ThreadImpl::State::SleepingAndPaused:
+		change_sleepingpaused_thread_to_sleeping(thread);
+		break;
+	case ThreadImpl::State::Reset:
+	case ThreadImpl::State::Terminated:
+		TX_ASSERT(0);
+		break;
+	default:
+		break;
+	}
+
+	RTOS_PROFILER_STOP("unpause_thread");
+	lock_release();
+}
+
+void Scheduler::relinquish(CoreInfo & core)
+/* Replace the thread with state RUNNING on @core with a thread of equal or higher priority
+ * Do nothing if no candidate exists
+ */
+{
+	lock_acquire();
+	RTOS_PROFILER_START("relinquish");
+
+	if (exchange_top_ready_thread_with_running_thread(core, core.m_thread_running->m_effective_priority + 1))
+	{
+		switch_context();
+	}
+
+	RTOS_PROFILER_STOP("relinquish");
+	lock_release();
+}
+
+void Scheduler::sleep(CoreInfo & core, TimeType expire_time)
+// Put the thread with state RUNNING on @core to sleep
+{
+	g_scheduler.lock_acquire();
+	RTOS_PROFILER_START("sleep");
+
+	g_scheduler.change_running_thread_to_sleeping(g_scheduler.m_core, expire_time);
+	g_scheduler.change_top_ready_thread_to_running(g_scheduler.m_core);
+	g_scheduler.switch_context();
+
+	RTOS_PROFILER_STOP("sleep");
+	g_scheduler.lock_release();
 }
 
 
@@ -814,7 +865,7 @@ void Scheduler::kill_thread(Thread & thread)
 
 
 
-inline void Mutex::set_owner(Thread & thread)
+inline void Mutex::set_owner(ThreadImpl & thread)
 {
 	m_owner = &thread;
 	m_sibling.insert_single_as_prev_of(thread.m_owned_mutex);
@@ -842,7 +893,7 @@ size_t Mutex::get_max_inherited_priority_among_siblings(TXLib::LinkedCycle & sib
 	return base_priority;
 }
 
-void Mutex::unlock_all_mutex(Thread & thread) // Acquire scheduler lock, does not change thread priority
+void Mutex::unlock_all_mutex(ThreadImpl & thread) // Acquire scheduler lock, does not change thread priority
 {
 	while (!thread.m_owned_mutex.is_single())
 	{
@@ -940,7 +991,7 @@ void Mutex::unlock(void)
 	g_scheduler.lock_acquire();
 	RTOS_PROFILER_START("mutex_unlock");
 
-	Thread & thread = *m_owner;
+	ThreadImpl & thread = *m_owner;
 
 	set_orphan();
 	g_scheduler.change_top_mutexblocked_thread_to_ready(*this);
@@ -1080,21 +1131,31 @@ bool MessageQueue::push(size_t message)
 
 
 
-Thread & create_thread(FunctionPtr entry, size_t entry_argument, size_t priority, size_t stack_size)
+
+void Thread::initialize(FunctionPtr entry, size_t entry_argument, size_t priority, size_t stack_size)
 {
-	Thread * thread = & g_thread_mgr.create_empty_thread();
-	thread->initialize(entry, entry_argument, priority, stack_size);
+	ThreadImpl & thread = *reinterpret_cast<ThreadImpl *>(this);
+	thread.initialize_self(entry, entry_argument, priority, stack_size);
 
 	g_scheduler.lock_acquire();
-	g_scheduler.change_paused_thread_to_ready(*thread);
+	g_scheduler.change_paused_thread_to_ready(thread);
 	g_scheduler.lock_release();
-
-	return *thread;
 }
 
-Thread & create_thread(FunctionPtr entry, size_t priority, size_t stack_size)
+void Thread::uninitialize(void)
 {
-	return create_thread(entry, 0, priority, stack_size);
+	TX_ASSERT(m_state == State::Terminated);
+	free((void*) m_stack_begin);
+	m_state = State::Reset; // In this state, the thread does not have ownership of any stack memory
+}
+
+Thread::~Thread(void)
+{
+	TX_ASSERT(m_state == State::Reset || m_state == State::Terminated);
+	if (m_state == State::Terminated)
+	{
+		free((void*) m_stack_begin);
+	}
 }
 
 void relinquish(void)
@@ -1102,16 +1163,7 @@ void relinquish(void)
 	TX_ASSERT(__get_CONTROL() & 0x10b); // Cannot be called in handler mode
 	TX_ASSERT(g_scheduler.m_core.m_thread_running == g_scheduler.m_core.m_thread_on_core);
 
-	g_scheduler.lock_acquire();
-	RTOS_PROFILER_START("relinquish");
-
-	if (g_scheduler.exchange_top_ready_thread_with_running_thread(g_scheduler.m_core, g_scheduler.m_core.m_thread_running->m_effective_priority + 1))
-	{
-		g_scheduler.switch_context();
-	}
-
-	RTOS_PROFILER_STOP("relinquish");
-	g_scheduler.lock_release();
+	g_scheduler.relinquish(g_scheduler.m_core);
 }
 
 void sleep(size_t sleep_duration)
@@ -1119,59 +1171,22 @@ void sleep(size_t sleep_duration)
 	TX_ASSERT(__get_CONTROL() & 0x10b); // Cannot be called in handler mode
 	TX_ASSERT(g_scheduler.m_core.m_thread_running == g_scheduler.m_core.m_thread_on_core);
 
-	g_scheduler.lock_acquire();
-	RTOS_PROFILER_START("sleep");
-
-	g_scheduler.change_running_thread_to_sleeping(g_scheduler.m_core, g_system_timer.get_tick() + sleep_duration);
-	g_scheduler.change_top_ready_thread_to_running(g_scheduler.m_core);
-	g_scheduler.switch_context();
-
-	RTOS_PROFILER_STOP("sleep");
-	g_scheduler.lock_release();
+	g_scheduler.sleep(g_scheduler.m_core, g_system_timer.get_tick() + sleep_duration);
 }
 
-
-
-
-void pause_thread(Thread & thread)
+void Thread::pause(void)
 {
-	g_scheduler.lock_acquire();
-	RTOS_PROFILER_START("pause_thread");
-
-	g_scheduler.pause_thread_impl(thread);
-
-	RTOS_PROFILER_STOP("pause_thread");
-	g_scheduler.lock_release();
+	g_scheduler.pause_thread(*reinterpret_cast<ThreadImpl *>(this));
 }
 
-void kill_thread(Thread & thread)
+void Thread::kill(void)
 {
-	g_scheduler.kill_thread(thread);
+	g_scheduler.kill_thread(*reinterpret_cast<ThreadImpl *>(this));
 }
 
-void unpause_thread(Thread & thread)
+void Thread::unpause(void)
 {
-	g_scheduler.lock_acquire();
-	RTOS_PROFILER_START("unpause_thread");
-
-	switch (thread.m_state)
-	{
-	case Thread::State::Paused:
-		g_scheduler.change_paused_thread_to_ready(thread);
-		break;
-	case Thread::State::SleepingAndPaused:
-		g_scheduler.change_sleepingpaused_thread_to_sleeping(thread);
-		break;
-	case Thread::State::Reset:
-	case Thread::State::Terminated:
-		TX_ASSERT(0);
-		break;
-	default:
-		break;
-	}
-
-	RTOS_PROFILER_STOP("unpause_thread");
-	g_scheduler.lock_release();
+	g_scheduler.unpause_thread(*reinterpret_cast<ThreadImpl *>(this));
 }
 
 

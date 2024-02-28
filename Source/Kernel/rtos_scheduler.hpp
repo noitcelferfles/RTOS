@@ -7,8 +7,8 @@
 
 #pragma once
 
+#include <Source/Kernel/rtos_threadimpl_impl.hpp>
 #include "./Source/PublicApi/rtos.hpp"
-#include "rtos_thread_mgr.hpp"
 #include <atomic>
 #include "./External/MyLib/tx_heap.hpp"
 #include "./External/MyLib/tx_array.hpp"
@@ -24,8 +24,8 @@ class CoreInfo
 {
 
 public:
-	Thread *		m_thread_running; // Thread whose state in the scheduler is RUNNING (its context may not yet be on the core)
-	Thread *		m_thread_on_core; // Thread associated to the current psp (its state need not be RUNNING if it is about to relinquish)
+	ThreadImpl *		m_thread_running; // Thread whose state in the scheduler is RUNNING (its context may not yet be on the core)
+	ThreadImpl *		m_thread_on_core; // Thread associated to the current psp (its state need not be RUNNING if it is about to relinquish)
 	// The two threads above are guaranteed to coincide outside of scheduler execution
 
 	size_t					m_last_context_switch_cycle;
@@ -75,7 +75,7 @@ public:
 	void insert_thread(TXLib::LinkedCycleUnsafe & link, TimeType expire_time)
 	{
 		TXLib::LinkedCycle * iter = &m_link.prev();
-		while (iter != &m_link && Thread::get_thread_from_m_expire_link(*iter).m_expire_time > expire_time)
+		while (iter != &m_link && ThreadImpl::get_thread_from_m_expire_link(*iter).m_expire_time > expire_time)
 		{
 			iter = &iter->prev();
 		}
@@ -92,13 +92,13 @@ public:
 class SleepHeap
 {
 public:
-	static bool is_earlier(Thread * const & a, Thread * const & b)
+	static bool is_earlier(ThreadImpl * const & a, ThreadImpl * const & b)
 	{
 		return a->m_expire_time <= b->m_expire_time;
 	}
 
 public:
-	TXLib::DynamicHeap<Thread *, is_earlier> 					m_heap;
+	TXLib::DynamicHeap<ThreadImpl *, is_earlier> 					m_heap;
 
 public:
 	SleepHeap(void) {}
@@ -108,10 +108,10 @@ public:
 
 	TimeType get_next_expire_time(void) const {return m_heap.get_size() > 0 ? m_heap.get_top()->m_expire_time : ~0;}
 
-	void insert(Thread & thread) {m_heap.insert(&thread);}
+	void insert(ThreadImpl & thread) {m_heap.insert(&thread);}
 
-	Thread * get_top(void) const {return m_heap.get_top();}
-	Thread * pop_top(void) {return m_heap.pop_top();}
+	ThreadImpl * get_top(void) const {return m_heap.get_top();}
+	ThreadImpl * pop_top(void) {return m_heap.pop_top();}
 
 	size_t get_size(void) const {return m_heap.get_size();}
 };
@@ -120,13 +120,13 @@ public:
 class ExpireHeap
 {
 public:
-	static bool is_earlier(Thread * const & a, Thread * const & b)
+	static bool is_earlier(ThreadImpl * const & a, ThreadImpl * const & b)
 	{
 		return a->m_expire_time <= b->m_expire_time;
 	}
 
 public:
-	TXLib::DynamicHeap<Thread *, is_earlier> 					m_heap;
+	TXLib::DynamicHeap<ThreadImpl *, is_earlier> 					m_heap;
 
 public:
 	ExpireHeap(void) {}
@@ -136,11 +136,11 @@ public:
 
 	TimeType get_next_expire_time(void) const {return m_heap.get_size() > 0 ? m_heap.get_top()->m_expire_time : ~0;}
 
-	void insert(Thread & thread) {m_heap.insert(&thread);}
-	bool remove(Thread & thread) {return m_heap.remove(&thread);}
+	void insert(ThreadImpl & thread) {m_heap.insert(&thread);}
+	bool remove(ThreadImpl & thread) {return m_heap.remove(&thread);}
 
-	Thread * get_top(void) const {return m_heap.get_top();}
-	Thread * pop_top(void) {return m_heap.pop_top();}
+	ThreadImpl * get_top(void) const {return m_heap.get_top();}
+	ThreadImpl * pop_top(void) {return m_heap.pop_top();}
 
 	size_t get_size(void) const {return m_heap.get_size();}
 };
@@ -160,8 +160,8 @@ public:
 	SleepHeap						m_sleep_heap;
 	ExpireHeap					m_expire_heap;
 
-	Thread							m_idle_thread;
-	Thread							m_first_user_thread;
+	ThreadImpl							m_idle_thread;
+	ThreadImpl							m_first_user_thread;
 
 	Spinlock						m_spinlock;
 
@@ -186,8 +186,8 @@ public:
 
 // Thread state-change primitives
 
-	void change_paused_thread_to_ready(Thread & thread);
-	void change_ready_thread_to_paused(Thread & thread);
+	void change_paused_thread_to_ready(ThreadImpl & thread);
+	void change_ready_thread_to_paused(ThreadImpl & thread);
 	void change_top_ready_thread_to_running(CoreInfo & core);
 	bool exchange_top_ready_thread_with_running_thread(CoreInfo & core, size_t skip_priority);
 	void change_running_thread_to_ready(CoreInfo & core);
@@ -199,16 +199,16 @@ public:
 	void change_running_thread_to_paused(CoreInfo & core);
 	void change_running_thread_to_terminated(CoreInfo & core);
 	void change_expired_thread_to_ready(TimeType time);
-	void change_sleeping_thread_to_sleepingpaused(Thread & thread);
-	void change_sleepingpaused_thread_to_sleeping(Thread & thread);
+	void change_sleeping_thread_to_sleepingpaused(ThreadImpl & thread);
+	void change_sleepingpaused_thread_to_sleeping(ThreadImpl & thread);
 	void change_top_mutexblocked_thread_to_ready(Mutex & mutex);
-	void change_mutexblocked_thread_to_paused(Thread & thread);
+	void change_mutexblocked_thread_to_paused(ThreadImpl & thread);
 	void change_top_messageblocked_thread_to_ready(MessageQueue & queue);
-	void change_messageblocked_thread_to_paused(Thread & thread);
+	void change_messageblocked_thread_to_paused(ThreadImpl & thread);
 
 // Thread state-change primitives (helper functions)
 
-	void set_effective_priority(Thread & thread, size_t priority);
+	void set_effective_priority(ThreadImpl & thread, size_t priority);
 	void increase_priority_of_blocking_mutexes_and_owners(Mutex * blocking_mutex, size_t priority);
 
 	void change_expired_sleeping_thread_to_ready_version_list(TimeType time);
@@ -227,19 +227,27 @@ public:
 	TimeType get_latest_wakeup_time_in_tick(TimeType time_now);
 	void sleep_procedure(void);
 	void switch_context(void);
-	void pause_thread_impl(Thread & thread);
+	void pause_thread_impl(ThreadImpl & thread);
 
 
 // High-level API
 
-	void initialize(FunctionPtr entry, size_t stack_size);
+	__attribute__((noreturn)) void initialize(FunctionPtr entry, size_t stack_size);
 	void systick_update(TimeType time);
-	void kill_thread(Thread & thread);
+	inline void kill_thread(ThreadImpl & thread);
+	inline void pause_thread(ThreadImpl & thread);
+	inline void unpause_thread(ThreadImpl & thread);
+	inline void relinquish(CoreInfo & core);
+	inline void sleep(CoreInfo & core, TimeType expire_time);
 
+
+public:
+
+	static __attribute__((noreturn)) void idle_thread(void);
 
 };
 
 
-extern "C" void PendSV_Handler(void);
+extern "C" void PendSV_Handler(void); // Interrupt handler
 
 }

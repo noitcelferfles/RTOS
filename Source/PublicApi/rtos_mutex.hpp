@@ -16,7 +16,7 @@
 namespace RTOS
 {
 
-class Thread;
+class ThreadImpl;
 class Scheduler;
 
 class Mutex
@@ -26,7 +26,7 @@ friend Scheduler;
 
 
 private:
-	Thread *											m_owner;
+	ThreadImpl *									m_owner;
 	PriorityList									m_blocked_threads;
 	TXLib::LinkedCycleUnsafe			m_sibling; // Linked to mutexes owned by the same thread
 
@@ -50,10 +50,10 @@ public:
 private:
 	size_t get_inherited_priority(void) const {return m_blocked_threads.get_highest_priority();}
 
-	void set_owner(Thread & thread);
+	void set_owner(ThreadImpl & thread);
 	void set_orphan(void);
 
-	static void unlock_all_mutex(Thread & thread);
+	static void unlock_all_mutex(ThreadImpl & thread);
 	static size_t get_max_inherited_priority_among_siblings(TXLib::LinkedCycle & sibling_link, size_t base_priority);
 	static Mutex & get_mutex_from_m_sibling(TXLib::LinkedCycle & sibling)
 	{
