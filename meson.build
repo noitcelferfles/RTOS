@@ -89,7 +89,7 @@ out = static_library('@0@'.format(out_name),
             )
 
 custom_target(
-            'object dump',
+            'object dump (with assert)',
             build_by_default : true,
             capture : true,
             output : ['@0@.list'.format(out_name)],
@@ -97,7 +97,7 @@ custom_target(
             depends : [out])
 
 custom_target(
-            'size dump',
+            'size dump (with assert)',
             build_by_default : true,
             capture : true,
             output : ['@0@.size'.format(out_name)],
@@ -112,7 +112,7 @@ out_no_assert = static_library('@0@_no_assert'.format(out_name),
             )
 			
 custom_target(
-            'object dump',
+            'object dump (no assert)',
             build_by_default : true,
             capture : true,
             output : ['@0@_no_assert.list'.format(out_name)],
@@ -120,7 +120,7 @@ custom_target(
             depends : [out_no_assert])
 
 custom_target(
-            'size dump',
+            'size dump (no assert)',
             build_by_default : true,
             capture : true,
             output : ['@0@_no_assert.size'.format(out_name)],
