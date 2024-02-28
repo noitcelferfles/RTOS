@@ -1,13 +1,13 @@
-project('RTOS', ['c', 'cpp'], default_options : ['c_std=c11', 'cpp_std=c++14'])
+project('RTOS', ['c', 'cpp'], default_options : ['c_std=c11', 'cpp_std=c++14', 'b_staticpic=false'])
 
 
-#================================ User settings =====================================
+#================================ Settings ==========================================
 
 compiler_optimization = 'Os'
 
 preprocessor_tags = [
     'DEBUG',
-	'TX_NO_ASSERT',
+    #'TX_NO_ASSERT',
     'STM32',
     'STM32F2',
     'STM32F207GZTx',
@@ -19,38 +19,36 @@ objcopy = 'arm-none-eabi-objcopy'
 
 out_name = 'RTOS'
 
-
+mode_args = [
+    '-mcpu=@0@'.format(host_machine.cpu() == 'cortex-m0+' ? 'cortex-m0plus' : host_machine.cpu()),
+    '-mthumb',
+    '-mfloat-abi=soft',
+    '--specs=nano.specs',
+	#'--print-file-name=libc.a',
+	]
 
 
 
 #===================================== Compiler arguments ==========================
 
-compiler_args = [   # default arguments
-    '-mthumb',
-    '-mfloat-abi=soft',
-    '--specs=nano.specs',
-
+c_compiler_args = [   # default arguments
     '-fdata-sections',          # each variable on a seperate section
     '-ffunction-sections',      # each function on a seperate section
     '-fstack-usage',
 
     '-Wall',
-    '-g3', 
+    '-g3',
+    '-@0@'.format(compiler_optimization),
     ]
 
-cpu = host_machine.cpu() == 'cortex-m0+' ? 'cortex-m0plus' : host_machine.cpu()
-compiler_args = ['-mcpu=@0@'.format(cpu)] + compiler_args
-
-compiler_args += ['-@0@'.format(compiler_optimization)]
-
 foreach preprocessor_tag : preprocessor_tags
-    compiler_args += ['-D@0@'.format(preprocessor_tag)]
+    c_compiler_args += ['-D@0@'.format(preprocessor_tag)]
 endforeach
 
-cpp_compiler_args = [
+cpp_compiler_args = c_compiler_args + [
     '-fno-exceptions',          # remove exception handling code
     '-fno-rtti',                # disable dynamic polymorphism
-    '-fno-use-cxa-atexit',
+    '-fno-use-cxa-atexit',		# do not call destructors in atexit
     ]
 
 
@@ -61,10 +59,8 @@ cpp_compiler_args = [
 linker_args = [     # default arguments
     '-Wl,--gc-sections',    # Remove unused sections
     '-static',          # Do not link against shared libraries
-    '-Wl,-Map,@0@.map'.format(out_name),
+    #'-Wl,-Map,@0@.map'.format(out_name),
     ]  
-
-#linker_args += ['-Wl,-T,@0@/@1@'.format(meson.current_source_dir(), linker_script)]
 
 
 
@@ -85,10 +81,8 @@ subdir('./External/MyLib')
 
 out = static_library('@0@'.format(out_name),
             source_files,
-            c_args              : compiler_args,
-            cpp_args            : [compiler_args, cpp_compiler_args],
-            #link_args           : linker_args,
-            #link_depends        : linker_script,
+            c_args              : [mode_args, c_compiler_args],
+            cpp_args            : [mode_args, cpp_compiler_args],
             include_directories : header_directories
             )
 
@@ -97,7 +91,7 @@ custom_target(
             build_by_default : true,
             capture : true,
             output : ['@0@.list'.format(out_name)],
-            command : [objdump, '-x', '-S', 'lib@0@.a'.format(out_name)],
+            command : [objdump, '-h', '-S', 'lib@0@.a'.format(out_name)],
             depends : [out])
 
 custom_target(
