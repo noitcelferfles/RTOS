@@ -4,7 +4,6 @@ local_source_files = [
 	'rtos_profiler.cpp', 
 	'rtos_scheduler.cpp', 
 	'rtos_system_timer.cpp',
-	'rtos_thread_mgr.cpp'
 	]
 	
 foreach local_source_file : local_source_files
