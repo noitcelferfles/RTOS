@@ -29,6 +29,8 @@ mode_args = [
 
 
 
+
+
 #===================================== Compiler arguments ==========================
 
 c_compiler_args = [   # default arguments
@@ -77,7 +79,7 @@ subdir('./External/MyLib')
 
 
 
-#============================= Compilation flow ===================================
+#============================= Compile static library ===============================
 
 out = static_library('@0@'.format(out_name),
             source_files,
@@ -102,12 +104,35 @@ custom_target(
             command : [size, 'lib@0@.a'.format(out_name)],
             depends : [out])
 
+out_no_assert = static_library('@0@_no_assert'.format(out_name),
+            source_files,
+            c_args              : [mode_args, c_compiler_args, '-DTX_NO_ASSERT'],
+            cpp_args            : [mode_args, cpp_compiler_args, '-DTX_NO_ASSERT'],
+            include_directories : header_directories
+            )
+			
+custom_target(
+            'object dump',
+            build_by_default : true,
+            capture : true,
+            output : ['@0@_no_assert.list'.format(out_name)],
+            command : [objdump, '-h', '-S', 'lib@0@_no_assert.a'.format(out_name)],
+            depends : [out_no_assert])
+
+custom_target(
+            'size dump',
+            build_by_default : true,
+            capture : true,
+            output : ['@0@_no_assert.size'.format(out_name)],
+            command : [size, 'lib@0@_no_assert.a'.format(out_name)],
+            depends : [out_no_assert])
+
 
 
 #=============================== Compile examples =================================
 
 example_dep = declare_dependency(
-            link_with : out,
+            link_with : out_no_assert,
             )
 
 example_includes = ['External/CMSIS/Include', 'External/CMSIS/Device/ST/STM32F2xx/Include']

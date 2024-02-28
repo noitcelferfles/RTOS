@@ -44,10 +44,10 @@ custom_target(
             command : ['sort', '@0@/@1@.temp'.format(meson.current_build_dir(), local_out_name)],
             depends : [local_map])
 			
-#custom_target(
-#		    'size dump',
-#            build_by_default : true,
-#            capture : true,
-#            output : ['@0@.size'.format(local_out_name)],
-#            command : [size, '@0@/@1@.elf'.format(meson.current_build_dir(), local_out_name)],
-#            depends : [local_exec])
+custom_target(
+		    'size dump',
+            build_by_default : true,
+            capture : true,
+            output : ['@0@.size'.format(local_out_name)],
+            command : [size, '@0@/@1@.elf'.format(meson.current_build_dir(), local_out_name)],
+            depends : [local_exec])

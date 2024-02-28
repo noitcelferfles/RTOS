@@ -34,6 +34,10 @@ jobs:
         path: |
           ./build/libRTOS.a
           ./build/RTOS.list
+          ./build/RTOS.size
+          ./build/libRTOS_no_assert.a
+          ./build/RTOS_no_assert.list
+          ./build/RTOS_no_assert.size
         retention-days: 1
     - name: Save compilation results
       uses: actions/upload-artifact@v4
@@ -43,4 +47,5 @@ jobs:
           ./build/Examples/Example1/example1.elf
           ./build/Examples/Example1/example1.list
           ./build/Examples/Example1/example1.map
+          ./build/Examples/Example1/example1.size
         retention-days: 1
