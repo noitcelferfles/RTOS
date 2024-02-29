@@ -66,6 +66,6 @@ size_t unused_memory(void)
 
 
 
-}
+} // namespace RTOS
 
 

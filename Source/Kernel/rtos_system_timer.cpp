@@ -59,4 +59,4 @@ TimeType system_time(void)
 	return g_system_timer.get_tick();
 }
 
-}
+} // namespace RTOS

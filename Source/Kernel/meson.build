@@ -1,5 +1,4 @@
 local_source_files = [
-	'rtos_cpu_timer.cpp', 
 	'rtos_impl.cpp', 
 	'rtos_profiler.cpp', 
 	'rtos_scheduler.cpp', 

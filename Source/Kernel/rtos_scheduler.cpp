@@ -1282,4 +1282,4 @@ void Thread::unpause(void)
 
 
 
-}
+} // namespace RTOS

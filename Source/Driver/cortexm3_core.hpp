@@ -55,7 +55,7 @@ public:
 	static void configure_priorities(void)
 	{
 //		SCB->SHP[7] = 0xFE; // SVC; This interrupt is unused
-		SCB->SHP[10] = 0xFF; // PendSV; Lowest priority ensure that context switch does not happen during interrupts
+		SCB->SHP[10] = 0xFF; // PendSV; Set to lowest priority because context switch cannot happen during interrupts
 		SCB->SHP[11] = 0xFE; // SysTick
 	}
 

@@ -22,6 +22,7 @@ class Mutex;
 class PriorityList;
 
 class Thread
+// Implemented in Source/Kernel/rtos_scheduler.cpp
 {
 
 
@@ -91,4 +92,4 @@ void relinquish(void); // Only relinquish to higher or equal priority ready thre
 void sleep(size_t sleep_duration);
 
 
-}
+} // namespace RTOS

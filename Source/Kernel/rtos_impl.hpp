@@ -9,7 +9,6 @@
 
 #include "./Source/PublicApi/rtos.hpp"
 #include "rtos_scheduler.hpp"
-#include "rtos_cpu_timer.hpp"
 #include "rtos_system_timer.hpp"
 #include "./External/MyLib/tx_memory_halffit.hpp"
 #include <utility>
@@ -58,4 +57,4 @@ public:
 
 
 
-}
+} // namespace RTOS

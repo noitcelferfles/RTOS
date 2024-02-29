@@ -22,4 +22,4 @@ size_t Profiler::s_max_delay;
 size_t Profiler::s_last_profile_index;
 
 
-}
+} // namespace RTOS

@@ -39,11 +39,9 @@ public:
 	void set_max_allowable_tick(size_t tick) {m_max_allowable_tick_until_next_update = tick;}
 
 
-public:
-	static void SysTick_Handler(void); // Interrupt handler
 
 };
 
-extern "C" void SysTick_Handler(void);
+extern "C" void SysTick_Handler(void); // Interrupt handler
 
-}
+} // namespace RTOS

@@ -245,4 +245,4 @@ public:
 
 extern "C" void PendSV_Handler(void); // Interrupt handler
 
-}
+} // namespace RTOS

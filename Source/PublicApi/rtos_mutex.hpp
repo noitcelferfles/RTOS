@@ -20,7 +20,7 @@ class ThreadImpl;
 class Scheduler;
 
 class Mutex
-// Implemented in Source/rtos_scheduler.cpp
+// Implemented in Source/Kernel/rtos_scheduler.cpp
 {
 friend Scheduler;
 
@@ -66,4 +66,4 @@ private:
 
 
 
-}
+} // namespace RTOS

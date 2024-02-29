@@ -19,7 +19,7 @@ namespace RTOS
 class Scheduler;
 
 class MessageQueue
-// Implemented in Source/rtos_scheduler.cpp
+// Implemented in Source/Kernel/rtos_scheduler.cpp
 {
 	friend Scheduler;
 
@@ -54,4 +54,4 @@ public:
 
 
 
-}
+} // namespace RTOS
