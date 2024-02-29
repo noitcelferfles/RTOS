@@ -7,7 +7,7 @@
 
 #pragma once
 
-
+#include "./Source/Driver/cortexm3_core.hpp"
 #include "./External/MyLib/tx_assert.h"
 #include "./External/CMSIS/Include/cmsis_compiler.h"
 #include <stddef.h>
@@ -107,7 +107,7 @@ public:
 		TX_ASSERT(s_last_profile_index == NullIndex);
 
 		s_last_profile_index = profile_index;
-		s_time_start = (*s_get_time_func)();
+		s_time_start = CoreClock::get_cycle_count();
 	}
 
 	static void stop(void)
@@ -115,7 +115,7 @@ public:
 		TX_ASSERT(is_initialized());
 		TX_ASSERT(s_last_profile_index != NullIndex);
 
-		s_last_delay = (*s_get_time_func)() - s_time_start;
+		s_last_delay = CoreClock::get_cycle_count() - s_time_start;
 		if (s_last_delay > s_max_delay)
 		{
 			s_max_delay = s_last_delay;
@@ -124,6 +124,7 @@ public:
 		{
 			__NOP();
 		}
+		__NOP();
 		s_last_profile_index = NullIndex;
 	}
 

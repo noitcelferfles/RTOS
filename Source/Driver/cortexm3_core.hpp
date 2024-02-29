@@ -8,7 +8,6 @@
 #pragma once
 
 #include "./External/CMSIS/Device/ST/STM32F2xx/Include/stm32f207xx.h"
-#include "./External/CMSIS/Include/core_cm3.h"
 #include "./External/MyLib/tx_assert.h"
 #include "stddef.h"
 
@@ -27,6 +26,11 @@ public:
 	static size_t get_cycle_count(void)
 	{
 		return DWT->CYCCNT;
+	}
+
+	static size_t get_cycle_counter_address(void)
+	{
+		return (size_t) &DWT->CYCCNT;
 	}
 
 	static bool clock_is_enabled(void)
@@ -119,6 +123,11 @@ public:
 	static void initialize(void)
 	{
 		SCB->SCR &= ~SCB_SCR_SLEEPDEEP_Msk;
+	}
+
+	static void enter_sleep_mode(void)
+	{
+		__WFI();
 	}
 
 };

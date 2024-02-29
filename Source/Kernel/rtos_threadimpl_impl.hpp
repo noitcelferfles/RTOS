@@ -58,7 +58,7 @@ public:
 	ThreadImpl(void) noexcept = default;
 	ThreadImpl(ThreadImpl const &) = delete;
 	ThreadImpl(ThreadImpl &&) = delete;
-	~ThreadImpl(void) noexcept;
+	~ThreadImpl(void) noexcept = default;
 	void operator=(ThreadImpl const & b) = delete;
 	void operator=(ThreadImpl && b) = delete;
 

@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include <Source/Kernel/rtos_threadimpl_impl.hpp>
+#include "rtos_threadimpl_impl.hpp"
 #include "./Source/PublicApi/rtos.hpp"
 #include <atomic>
 #include "./External/MyLib/tx_heap.hpp"
@@ -44,12 +44,9 @@ public:
 class ExpirationList
 {
 public:
-	static constexpr size_t const BuckerCountLog2 = 5;
-	static constexpr size_t const BucketCount = 1u << BuckerCountLog2;
-	static constexpr size_t const BucketMask = BucketCount - 1;
-
-public:
-	TXLib::LinkedCycle		m_link;
+	TXLib::LinkedCycle		m_sorted_link;
+	TXLib::LinkedCycle		m_unsorted_link;
+	// Requirements: all threads sharing the smallest expire_time is linked to @m_sorted_link
 
 public:
 	ExpirationList(void) noexcept = default;
@@ -64,28 +61,26 @@ public:
 
 	TXLib::LinkedCycle & get_next_thread_link(void)
 	{
-		return m_link.next();
+		return m_sorted_link.next();
 	}
 
 	TXLib::LinkedCycle & get_null_link(void)
 	{
-		return m_link;
+		return m_sorted_link;
 	}
 
-	void insert_thread(TXLib::LinkedCycleUnsafe & link, TimeType expire_time)
-	{
-		TXLib::LinkedCycle * iter = &m_link.prev();
-		while (iter != &m_link && ThreadImpl::get_thread_from_m_expire_link(*iter).m_expire_time > expire_time)
-		{
-			iter = &iter->prev();
-		}
-		link.insert_single_as_next_of(*iter);
-	}
+	void insert_thread(TXLib::LinkedCycleUnsafe & link, TimeType expire_time);
 
 	void remove(TXLib::LinkedCycleUnsafe & link)
 	{
 		link.remove_from_cycle();
+		sort_unsorted();
 	}
+
+	TXLib::LinkedCycle & remove_threads_sharing_smallest_expire_time(void);
+
+	void sort_unsorted(void);
+
 
 };
 
@@ -222,9 +217,9 @@ public:
 
 	void lock_acquire(void);
 	void lock_release(void);
-	void enter_sleep_mode(void);
 
 	TimeType get_latest_wakeup_time_in_tick(TimeType time_now);
+	void maintenance_procedure(void);
 	void sleep_procedure(void);
 	void switch_context(void);
 	void pause_thread_impl(ThreadImpl & thread);

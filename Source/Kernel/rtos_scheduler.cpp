@@ -92,6 +92,71 @@ void ThreadImpl::populate_stack_context(void)
 
 
 
+
+
+
+void ExpirationList::insert_thread(TXLib::LinkedCycleUnsafe & link, TimeType expire_time)
+{
+	TX_ASSERT(m_unsorted_link.is_single() || !m_sorted_link.is_single());
+	TX_ASSERT(ThreadImpl::get_thread_from_m_expire_link(link).m_expire_time == expire_time);
+
+	__NOP();
+	if (m_sorted_link.is_single())
+	{
+		link.insert_single_as_next_of(m_sorted_link);
+	}
+	else
+	{
+		if (expire_time <= ThreadImpl::get_thread_from_m_expire_link(m_sorted_link.next()).m_expire_time)
+		{
+			link.insert_single_as_next_of(m_sorted_link);
+		}
+		else if (expire_time >= ThreadImpl::get_thread_from_m_expire_link(m_sorted_link.prev()).m_expire_time)
+		{
+			link.insert_single_as_prev_of(m_sorted_link);
+		}
+		else
+		{
+			link.insert_single_as_next_of(m_unsorted_link);
+		}
+	}
+}
+
+void ExpirationList::sort_unsorted(void)
+{
+	TXLib::LinkedCycleUnsafe * link = &m_unsorted_link.next();
+	while (link != &m_unsorted_link)
+	{
+		TXLib::LinkedCycleUnsafe * link_next = &link->next();
+
+		TXLib::LinkedCycle * iter = &m_sorted_link.prev();
+		while (iter != &m_sorted_link && ThreadImpl::get_thread_from_m_expire_link(*iter).m_expire_time > ThreadImpl::get_thread_from_m_expire_link(*link).m_expire_time)
+		{
+			iter = &iter->prev();
+		}
+		link->insert_single_as_next_of(*iter);
+
+		link = link_next;
+	}
+	link->become_safe();
+}
+
+TXLib::LinkedCycle & ExpirationList::remove_threads_sharing_smallest_expire_time(void)
+{
+	TX_ASSERT(!m_sorted_link.is_single());
+
+	TXLib::LinkedCycle * removed = &m_sorted_link.next();
+	TXLib::LinkedCycle * link = removed;
+	while (link != &m_sorted_link &&
+			ThreadImpl::get_thread_from_m_expire_link(*link).m_expire_time == ThreadImpl::get_thread_from_m_expire_link(*removed).m_expire_time)
+	{
+		link = &link->next();
+	}
+	m_sorted_link.criss_cross_with(*link);
+
+	return *removed;
+}
+
 void SleepHeap::initialize(void)
 {
 	m_heap.initialize(alloc, free, 2);
@@ -101,6 +166,11 @@ void ExpireHeap::initialize(void)
 {
 	m_heap.initialize(alloc, free, 2);
 }
+
+
+
+
+
 
 
 
@@ -129,7 +199,7 @@ void Scheduler::thread_entry(void)
 
 
 // Context switch
-extern "C" __attribute__((naked)) void PendSV_Handler(void)
+extern "C" __attribute__((naked, flatten)) void PendSV_Handler(void)
 {
 	__disable_irq();
 	__DMB();
@@ -158,7 +228,9 @@ extern "C" __attribute__((naked)) void PendSV_Handler(void)
 			"str r7, [%2] \n"
 			"mov lr, r8"
 			:
-			: "r"(&DWT->CYCCNT), "r"(&g_scheduler.m_core.m_last_context_switch_cycle), "r"(&g_scheduler.m_core.m_thread_running->m_cpu_cycle_used)
+			: "r"(&DWT->CYCCNT), // This can be replaced with "r"(CoreClock::get_cycle_counter_address()) if the compiler flattens the function call
+				"r"(&g_scheduler.m_core.m_last_context_switch_cycle),
+				"r"(&g_scheduler.m_core.m_thread_running->m_cpu_cycle_used)
 			: "memory");
 
 	// Load psp from ThreadInfo
@@ -480,41 +552,47 @@ void Scheduler::change_messageblocked_thread_to_paused(ThreadImpl & thread)
 
 void Scheduler::change_expired_sleeping_thread_to_ready_version_list(TimeType time)
 {
-	TXLib::LinkedCycle * link = &m_expiration_list.get_next_thread_link();
-
-	while (link != &m_expiration_list.get_null_link())
+	if (&m_expiration_list.get_next_thread_link() != &m_expiration_list.get_null_link())
 	{
-		ThreadImpl & thread = ThreadImpl::get_thread_from_m_expire_link(*link);
+		ThreadImpl * thread = & ThreadImpl::get_thread_from_m_expire_link(m_expiration_list.get_next_thread_link());
 
-		if (thread.m_expire_time > time) {break;}
-
-		TXLib::LinkedCycle * next_link = &link->next();
-
-		switch (thread.m_state)
+		TX_ASSERT(thread->m_expire_time >= time);
+		if (thread->m_expire_time <= time)
 		{
-		case ThreadImpl::State::Sleeping:
-			m_expiration_list.remove(*link);
-			m_ready_threads.insert(thread.m_priority_link, thread.m_effective_priority);
-			thread.m_priority_list = &m_ready_threads;
-			thread.m_state = ThreadImpl::State::Ready;
-			break;
-		case ThreadImpl::State::SleepingAndPaused:
-			m_expiration_list.remove(*link);
-			thread.m_state = ThreadImpl::State::Paused;
-			break;
-		case ThreadImpl::State::SoftBlockedByMessage:
-		case ThreadImpl::State::SoftBlockedByMutex:
-			m_expiration_list.remove(*link);
-			thread.m_priority_list->remove_link(thread.m_priority_link);
-			m_ready_threads.insert(thread.m_priority_link, thread.m_effective_priority);
-			thread.m_priority_list = &m_ready_threads;
-			thread.m_state = ThreadImpl::State::Ready;
-			break;
-		default:
-			TX_ASSERT(0);
-		}
+			TXLib::LinkedCycle * head = & m_expiration_list.remove_threads_sharing_smallest_expire_time();
+			TXLib::LinkedCycle * link = head;
 
-		link = next_link;
+			do
+			{
+				thread = & ThreadImpl::get_thread_from_m_expire_link(*link);
+
+				switch (thread->m_state)
+				{
+				case ThreadImpl::State::Sleeping:
+					m_ready_threads.insert(thread->m_priority_link, thread->m_effective_priority);
+					thread->m_priority_list = &m_ready_threads;
+					thread->m_state = ThreadImpl::State::Ready;
+					break;
+				case ThreadImpl::State::SleepingAndPaused:
+					thread->m_state = ThreadImpl::State::Paused;
+					break;
+				case ThreadImpl::State::SoftBlockedByMessage:
+				case ThreadImpl::State::SoftBlockedByMutex:
+					thread->m_priority_list->remove_link(thread->m_priority_link);
+					m_ready_threads.insert(thread->m_priority_link, thread->m_effective_priority);
+					thread->m_priority_list = &m_ready_threads;
+					thread->m_state = ThreadImpl::State::Ready;
+					break;
+				default:
+					TX_ASSERT(0);
+				}
+
+				link = &link->next();
+			}
+			while (link != head);
+
+			m_expiration_list.sort_unsorted();
+		}
 	}
 }
 
@@ -599,12 +677,6 @@ void Scheduler::lock_release(void)
 	m_spinlock.release();
 }
 
-void Scheduler::enter_sleep_mode(void)
-{
-	__WFI();
-}
-
-
 
 
 extern "C" void Scheduler::idle_thread(void) // Extern "C" is needed for the linker to find @_estack
@@ -624,6 +696,7 @@ extern "C" void Scheduler::idle_thread(void) // Extern "C" is needed for the lin
 
 	while (1)
 	{
+		g_scheduler.maintenance_procedure();
 		g_scheduler.sleep_procedure();
 	}
 }
@@ -657,10 +730,21 @@ TimeType Scheduler::get_latest_wakeup_time_in_tick(TimeType time_now)
 	return expire_time;
 }
 
+void Scheduler::maintenance_procedure(void)
+{
+	TX_ASSERT(__get_PRIMASK() == 0);
+	__disable_irq();
+	__DMB();
+
+	m_expiration_list.sort_unsorted();
+
+	__DMB();
+	__enable_irq();
+}
+
 void Scheduler::sleep_procedure(void)
 {
 	TX_ASSERT(__get_PRIMASK() == 0);
-
 	__disable_irq();
 	__DMB();
 
@@ -672,6 +756,7 @@ void Scheduler::sleep_procedure(void)
 	if (wakeup_time_in_tick <= system_time_in_tick)
 	{
 		// Abort if there is no time to sleep
+		__DMB();
 		__enable_irq();
 		return;
 	}
@@ -684,13 +769,14 @@ void Scheduler::sleep_procedure(void)
 	CoreInterrupt::reset_counter(wakeup_time_in_cycle - TimeType(CoreClock::get_cycle_count()));
 	g_system_timer.set_max_allowable_tick(tick_until_wakeup);
 
-	enter_sleep_mode();
+	LowPowerState::enter_sleep_mode();
 
 	TimeType next_systick_time = g_system_timer.update_time(CoreClock::get_cycle_count());
 	CoreInterrupt::reset_counter(next_systick_time - TimeType(CoreClock::get_cycle_count()));
 	g_system_timer.set_max_allowable_tick(1);
 	CoreInterrupt::clear_systick_interrupt();
 
+	__DMB();
 	__enable_irq();
 }
 

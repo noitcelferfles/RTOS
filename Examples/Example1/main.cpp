@@ -169,17 +169,6 @@ size_t useless_work_2(size_t arg)
 	}
 }
 
-size_t useless_work_3(size_t arg)
-{
-	while(1)
-	{
-		size_t volatile delay = DWT->CYCCNT - g_time_stamp; delay;
-		g_time_stamp = DWT->CYCCNT;
-		RTOS::sleep(arg);
-		__NOP();
-	}
-}
-
 size_t count_free_memory(size_t arg)
 {
 	size_t volatile used;
@@ -257,7 +246,7 @@ RTOS::Thread g_drive_blue;
 RTOS::Thread g_acquire_lock;
 RTOS::Thread g_send_uart;
 RTOS::Thread g_useless_work[5];
-RTOS::Thread g_useless_work_3[5];
+RTOS::Thread g_useless_work_3[30];
 RTOS::Thread g_useless_work_2[30];
 RTOS::Thread g_manage_useless_work;
 
@@ -293,7 +282,7 @@ size_t os_main(size_t arg)
 	}
 	for (size_t i = 0; i < sizeof(g_useless_work_3) / sizeof(RTOS::Thread); i++)
 	{
-		g_useless_work_3[i].initialize(&useless_work_3, 1, 3, 0x200);
+		g_useless_work_3[i].initialize(&useless_work_2, 1, 3, 0x200);
 	}
 
 	for (size_t i = 0; i < sizeof(g_useless_work_2) / sizeof(RTOS::Thread); i++)
