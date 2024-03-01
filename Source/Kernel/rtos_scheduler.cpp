@@ -912,7 +912,6 @@ void Scheduler::systick_update(TimeType time)
 	{
 		m_expiration_list.sort_all_unsorted(time);
 	}
-//	m_expiration_list.sort_all_unsorted(time);
 
 	change_expired_thread_to_ready(time);
 

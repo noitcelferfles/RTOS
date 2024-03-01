@@ -42,16 +42,6 @@ jobs:
     - name: Save compilation results
       uses: actions/upload-artifact@v4
       with:
-        name: SampleExample1
-        path: |
-          ./build/Sample/Example1/main.elf
-          ./build/Sample/Example1/main.list
-          ./build/Sample/Example1/main.map
-          ./build/Sample/Example1/main.size
-        retention-days: 1
-    - name: Save compilation results
-      uses: actions/upload-artifact@v4
-      with:
         name: SampleHelloWorld
         path: |
           ./build/Sample/HelloWorld/main.elf

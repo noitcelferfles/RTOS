@@ -137,7 +137,6 @@ example_dep = declare_dependency(
 
 example_includes = ['External/CMSIS/Include', 'External/CMSIS/Device/ST/STM32F2xx/Include']
 
-subdir('./Sample/Example1')
 subdir('./Sample/HelloWorld')
 subdir('./Sample/Sleep')
 
