@@ -28,6 +28,8 @@ public:
 	ThreadImpl *		m_thread_on_core; // Thread associated to the current psp (its state need not be RUNNING if it is about to relinquish)
 	// The two threads above are guaranteed to coincide outside of scheduler execution
 
+	ThreadImpl			m_idle_thread;	// The idle thread this core executes when there is no job remaining (the scheduler does not register this thread)
+
 	size_t					m_last_context_switch_cycle;
 
 public:
@@ -37,6 +39,8 @@ public:
 	~CoreInfo(void) noexcept = default;
 	void operator=(CoreInfo const &) noexcept = delete;
 	void operator=(CoreInfo &&) noexcept = delete;
+
+	void initialize(void);
 };
 
 
@@ -46,6 +50,7 @@ class ExpirationList
 public:
 	TXLib::LinkedCycle		m_sorted_link;
 	TXLib::LinkedCycle		m_unsorted_link;
+	TimeType							m_earliest_unsorted_expire_time;
 	// Requirements: all threads sharing the smallest expire_time is linked to @m_sorted_link
 
 public:
@@ -155,8 +160,7 @@ public:
 	SleepHeap						m_sleep_heap;
 	ExpireHeap					m_expire_heap;
 
-	ThreadImpl							m_idle_thread;
-	ThreadImpl							m_first_user_thread;
+	ThreadImpl					m_first_user_thread;
 
 	Spinlock						m_spinlock;
 
@@ -238,7 +242,7 @@ public:
 
 public:
 
-	static __attribute__((noreturn)) void idle_thread(void);
+	static __attribute__((noreturn)) size_t idle_thread(size_t arg);
 
 };
 

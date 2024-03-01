@@ -16,9 +16,6 @@
 #include <atomic>
 
 
-extern RTOS::Thread g_toggle_green;
-
-
 namespace RTOS
 {
 
@@ -92,6 +89,16 @@ void ThreadImpl::populate_stack_context(void)
 }
 
 
+
+
+
+
+void CoreInfo::initialize(void)
+{
+	m_idle_thread.initialize_self(& Scheduler::idle_thread, 0, PriorityList::INVALID_PRIORITY, 0x100);
+	m_thread_running = &m_idle_thread;
+	m_thread_on_core = &m_idle_thread;
+}
 
 
 
@@ -313,14 +320,19 @@ void Scheduler::change_top_ready_thread_to_running(CoreInfo & core)
 {
 	TX_ASSERT(core.m_thread_running == nullptr);
 
-	size_t waiting_priority = m_ready_threads.get_highest_priority();
-	if (waiting_priority < PriorityList::INVALID_PRIORITY)
+	size_t available_priority = m_ready_threads.get_highest_priority();
+	if (available_priority < PriorityList::INVALID_PRIORITY)
 	{
-		TXLib::LinkedCycleUnsafe * link = m_ready_threads.pop_link(waiting_priority);
+		TXLib::LinkedCycleUnsafe * link = m_ready_threads.pop_link(available_priority);
 
 		core.m_thread_running = & ThreadImpl::get_thread_from_m_priority_link(*link);
 		core.m_thread_running->m_state = ThreadImpl::State::Running;
 		core.m_thread_running->m_priority_list = nullptr;
+	}
+	else
+	{
+		// Execute idle thread
+		core.m_thread_running = &core.m_idle_thread;
 	}
 }
 
@@ -346,6 +358,15 @@ bool Scheduler::exchange_top_ready_thread_with_running_thread(CoreInfo & core, s
 	{
 		return false;
 	}
+}
+
+void Scheduler::change_running_thread_to_ready(CoreInfo & core)
+{
+	core.m_thread_running->m_state = ThreadImpl::State::Ready;
+	core.m_thread_running->m_priority_list = &m_ready_threads;
+	m_ready_threads.insert(core.m_thread_running->m_priority_link, core.m_thread_running->m_effective_priority);
+
+	core.m_thread_running = nullptr;
 }
 
 void Scheduler::change_running_thread_to_terminated(CoreInfo & core)
@@ -684,7 +705,7 @@ void Scheduler::lock_release(void)
 
 
 
-extern "C" void Scheduler::idle_thread(void) // Extern "C" is needed for the linker to find @_estack
+extern "C" size_t Scheduler::idle_thread(size_t arg) // Extern "C" is needed for the linker to find @_estack
 {
 	extern uint32_t _estack;
 	__asm volatile(
@@ -836,11 +857,7 @@ void Scheduler::initialize(FunctionPtr entry, size_t stack_size)
 	m_expiration_list.initialize();
 	m_sleep_heap.initialize();
 	m_expire_heap.initialize();
-
-	m_idle_thread.initialize_self(nullptr, 0, PriorityList::MIN_PRIORITY, 0x100);
-	m_core.m_thread_running = &m_idle_thread;
-	m_core.m_thread_on_core = &m_idle_thread;
-	m_idle_thread.m_state = ThreadImpl::State::Running;
+	m_core.initialize();
 
 	m_first_user_thread.initialize_self(entry, 0, PriorityList::MAX_PRIORITY, stack_size);
 	change_paused_thread_to_ready(m_first_user_thread);
@@ -848,7 +865,7 @@ void Scheduler::initialize(FunctionPtr entry, size_t stack_size)
 	LowPowerState::initialize();
 	CoreInterrupt::initialize();
 
-	idle_thread(); // The main thread becomes the idle thread here
+	idle_thread(0); // The main thread becomes the idle thread here
 	TX_ASSERT(0); // Should not reach here
 }
 
@@ -859,8 +876,18 @@ void Scheduler::systick_update(TimeType time)
 
 	change_expired_thread_to_ready(time);
 
-	if (exchange_top_ready_thread_with_running_thread(m_core, m_core.m_thread_on_core->m_effective_priority))
+	if (m_core.m_thread_running != &m_core.m_idle_thread)
 	{
+		if (exchange_top_ready_thread_with_running_thread(m_core, m_core.m_thread_running->m_effective_priority))
+		{
+			switch_context();
+		}
+	}
+	else
+	{
+		// Reaching here means that the core is running the idle thread
+		m_core.m_thread_running = nullptr;
+		change_top_ready_thread_to_running(m_core);
 		switch_context();
 	}
 

@@ -21,6 +21,7 @@ friend class MessageQueue;
 friend class PriorityList;
 friend class Scheduler;
 friend class ThreadMgr;
+friend class CoreInfo;
 friend class ExpirationList;
 friend class SleepHeap;
 friend class ExpireHeap;
