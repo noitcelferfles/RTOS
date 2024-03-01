@@ -115,27 +115,20 @@ void ExpirationList::insert_thread(TXLib::LinkedCycleUnsafe & link, TimeType exp
 	TX_ASSERT(m_unsorted_link.is_single() || !m_sorted_link.is_single());
 	TX_ASSERT(ThreadImpl::get_thread_from_m_expire_link(link).m_expire_time == expire_time);
 
-	if (m_sorted_link.is_single())
+	if (m_sorted_link.is_single() || expire_time <= ThreadImpl::get_thread_from_m_expire_link(m_sorted_link.next()).m_expire_time)
 	{
 		link.insert_single_as_next_of(m_sorted_link);
 	}
 	else
 	{
-		if (expire_time <= ThreadImpl::get_thread_from_m_expire_link(m_sorted_link.next()).m_expire_time)
+		if (ThreadImpl::get_thread_from_m_expire_link(link).m_expire_time >= m_earliest_unsorted_expire_time)
 		{
-			link.insert_single_as_next_of(m_sorted_link);
-		}
-		else if (expire_time >= ThreadImpl::get_thread_from_m_expire_link(m_sorted_link.prev()).m_expire_time)
-		{
-			link.insert_single_as_prev_of(m_sorted_link);
+			link.insert_single_as_prev_of(m_unsorted_link); // Insert at the back because later threads are expected to have later wakeup time
 		}
 		else
 		{
+			m_earliest_unsorted_expire_time = ThreadImpl::get_thread_from_m_expire_link(link).m_expire_time;
 			link.insert_single_as_next_of(m_unsorted_link);
-			if (ThreadImpl::get_thread_from_m_expire_link(link).m_expire_time < m_earliest_unsorted_expire_time)
-			{
-				m_earliest_unsorted_expire_time = ThreadImpl::get_thread_from_m_expire_link(link).m_expire_time;
-			}
 		}
 	}
 }
@@ -805,12 +798,6 @@ void Scheduler::maintenance_procedure(void)
 		__DMB();
 		__enable_irq();
 	}
-
-//	__disable_irq();
-//	__DMB();
-//	m_expiration_list.sort_all_unsorted(g_system_timer.get_tick());
-//	__DMB();
-//	__enable_irq();
 }
 
 void Scheduler::sleep_procedure(void)
@@ -925,6 +912,7 @@ void Scheduler::systick_update(TimeType time)
 	{
 		m_expiration_list.sort_all_unsorted(time);
 	}
+//	m_expiration_list.sort_all_unsorted(time);
 
 	change_expired_thread_to_ready(time);
 
@@ -1020,7 +1008,7 @@ void Scheduler::sleep_until(CoreInfo & core, TimeType expire_time)
 	lock_acquire();
 	RTOS_PROFILER_START("sleep");
 
-	if (expire_time > g_system_timer.get_tick())
+	if (expire_time > RTOSImpl::get_rtos_from_m_scheduler(*this).m_system_timer.get_tick())
 	{
 		change_running_thread_to_sleeping(core, expire_time);
 		change_top_ready_thread_to_running(core);
