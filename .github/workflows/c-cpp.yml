@@ -42,10 +42,30 @@ jobs:
     - name: Save compilation results
       uses: actions/upload-artifact@v4
       with:
-        name: Example1
+        name: SampleExample1
         path: |
-          ./build/Examples/Example1/example1.elf
-          ./build/Examples/Example1/example1.list
-          ./build/Examples/Example1/example1.map
-          ./build/Examples/Example1/example1.size
+          ./build/Sample/Example1/main.elf
+          ./build/Sample/Example1/main.list
+          ./build/Sample/Example1/main.map
+          ./build/Sample/Example1/main.size
+        retention-days: 1
+    - name: Save compilation results
+      uses: actions/upload-artifact@v4
+      with:
+        name: SampleHelloWorld
+        path: |
+          ./build/Sample/HelloWorld/main.elf
+          ./build/Sample/HelloWorld/main.list
+          ./build/Sample/HelloWorld/main.map
+          ./build/Sample/HelloWorld/main.size
+        retention-days: 1
+    - name: Save compilation results
+      uses: actions/upload-artifact@v4
+      with:
+        name: SampleSleep
+        path: |
+          ./build/Sample/Sleep/main.elf
+          ./build/Sample/Sleep/main.list
+          ./build/Sample/Sleep/main.map
+          ./build/Sample/Sleep/main.size
         retention-days: 1

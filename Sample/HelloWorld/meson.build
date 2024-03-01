@@ -1,4 +1,4 @@
-local_out_name = 'example1'
+local_out_name = 'main'
 local_linker_script = 'STM32F207ZGTX_FLASH.ld'
 
 local_linker_args = linker_args + '-T@0@/@1@'.format(meson.current_source_dir(), local_linker_script)
