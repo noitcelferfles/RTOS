@@ -30,7 +30,7 @@ TimeType SystemTimer::update_time(TimeType core_cycle)
 			 + (RTOSImpl::CoreCyclePerTick / 2); // This term is added so that the recorded tick is updated to the closest tick rather than the last tick that passed
 	auto result = TXLib::divide(time_since_record_in_cycle, RTOSImpl::CoreCyclePerTick);
 	size_t time_since_record_in_tick = result.first;
-	TX_ASSERT(time_since_record_in_tick <= m_max_allowable_tick_until_next_update);
+	tx_api_assert(time_since_record_in_tick <= m_max_allowable_tick_until_next_update);
 	m_last_recorded_tick += time_since_record_in_tick;
 	m_last_recorded_core_cycle += time_since_record_in_cycle - result.second;
 	return m_last_recorded_core_cycle + RTOSImpl::CoreCyclePerTick;

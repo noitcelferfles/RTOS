@@ -17,8 +17,6 @@
 namespace RTOS
 {
 
-typedef size_t (*FunctionPtr)(size_t arg);
-
 // OS operations
 
 __attribute__((noreturn)) void initialize(FunctionPtr entry, size_t stack_size, void * mem_ptr, size_t mem_size); /* Start the RTOS; this function does not return
