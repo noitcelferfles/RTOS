@@ -233,7 +233,7 @@ public:
 	inline void pause_thread(ThreadImpl & thread);
 	inline void unpause_thread(ThreadImpl & thread);
 	inline void relinquish(CoreInfo & core);
-	inline void sleep(CoreInfo & core, TimeType expire_time);
+	inline void sleep_until(CoreInfo & core, TimeType expire_time);
 
 
 public:

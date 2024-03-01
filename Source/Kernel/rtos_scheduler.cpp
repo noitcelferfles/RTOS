@@ -16,6 +16,9 @@
 #include <atomic>
 
 
+extern RTOS::Thread g_toggle_green;
+
+
 namespace RTOS
 {
 
@@ -100,7 +103,6 @@ void ExpirationList::insert_thread(TXLib::LinkedCycleUnsafe & link, TimeType exp
 	TX_ASSERT(m_unsorted_link.is_single() || !m_sorted_link.is_single());
 	TX_ASSERT(ThreadImpl::get_thread_from_m_expire_link(link).m_expire_time == expire_time);
 
-	__NOP();
 	if (m_sorted_link.is_single())
 	{
 		link.insert_single_as_next_of(m_sorted_link);
@@ -369,6 +371,7 @@ void Scheduler::change_running_thread_to_sleeping(CoreInfo & core, TimeType expi
 
 	if (UseListVersionForThreadSleep)
 	{
+		TX_ASSERT(expire_time > g_system_timer.get_tick());
 		m_expiration_list.insert_thread(core.m_thread_running->m_expire_link, expire_time);
 	}
 	else
@@ -403,6 +406,7 @@ void Scheduler::change_running_thread_to_softmutexblocked(CoreInfo & core, Mutex
 
 	if (UseListVersionForSoftBlockExpiration)
 	{
+		TX_ASSERT(expire_time > g_system_timer.get_tick());
 		m_expiration_list.insert_thread(core.m_thread_running->m_expire_link, expire_time);
 	}
 	else
@@ -430,6 +434,7 @@ void Scheduler::change_running_thread_to_softmessageblocked(CoreInfo & core, Mes
 
 	if (UseListVersionForSoftBlockExpiration)
 	{
+		TX_ASSERT(expire_time > g_system_timer.get_tick());
 		m_expiration_list.insert_thread(core.m_thread_running->m_expire_link, expire_time);
 	}
 	else
@@ -832,12 +837,12 @@ void Scheduler::initialize(FunctionPtr entry, size_t stack_size)
 	m_sleep_heap.initialize();
 	m_expire_heap.initialize();
 
-	m_idle_thread.initialize(nullptr, 0, PriorityList::MIN_PRIORITY, 0x100);
+	m_idle_thread.initialize_self(nullptr, 0, PriorityList::MIN_PRIORITY, 0x100);
 	m_core.m_thread_running = &m_idle_thread;
 	m_core.m_thread_on_core = &m_idle_thread;
 	m_idle_thread.m_state = ThreadImpl::State::Running;
 
-	m_first_user_thread.initialize(entry, 0, PriorityList::MAX_PRIORITY, stack_size);
+	m_first_user_thread.initialize_self(entry, 0, PriorityList::MAX_PRIORITY, stack_size);
 	change_paused_thread_to_ready(m_first_user_thread);
 
 	LowPowerState::initialize();
@@ -930,18 +935,21 @@ void Scheduler::relinquish(CoreInfo & core)
 	lock_release();
 }
 
-void Scheduler::sleep(CoreInfo & core, TimeType expire_time)
+void Scheduler::sleep_until(CoreInfo & core, TimeType expire_time)
 // Put the thread with state RUNNING on @core to sleep
 {
-	g_scheduler.lock_acquire();
+	lock_acquire();
 	RTOS_PROFILER_START("sleep");
 
-	g_scheduler.change_running_thread_to_sleeping(g_scheduler.m_core, expire_time);
-	g_scheduler.change_top_ready_thread_to_running(g_scheduler.m_core);
-	g_scheduler.switch_context();
+	if (expire_time > g_system_timer.get_tick())
+	{
+		change_running_thread_to_sleeping(core, expire_time);
+		change_top_ready_thread_to_running(core);
+		switch_context();
+	}
 
 	RTOS_PROFILER_STOP("sleep");
-	g_scheduler.lock_release();
+	lock_release();
 }
 
 
@@ -1257,7 +1265,7 @@ void sleep(size_t sleep_duration)
 	TX_ASSERT(__get_CONTROL() & 0x10b); // Cannot be called in handler mode
 	TX_ASSERT(g_scheduler.m_core.m_thread_running == g_scheduler.m_core.m_thread_on_core);
 
-	g_scheduler.sleep(g_scheduler.m_core, g_system_timer.get_tick() + sleep_duration);
+	g_scheduler.sleep_until(g_scheduler.m_core, g_system_timer.get_tick() + sleep_duration);
 }
 
 void Thread::pause(void)
