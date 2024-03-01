@@ -105,6 +105,11 @@ void CoreInfo::initialize(void)
 
 
 
+void ExpirationList::initialize(TimeType current_time)
+{
+	m_earliest_unsorted_expire_time = current_time + TimeType::get_max_positive();
+}
+
 void ExpirationList::insert_thread(TXLib::LinkedCycleUnsafe & link, TimeType expire_time)
 {
 	TX_ASSERT(m_unsorted_link.is_single() || !m_sorted_link.is_single());
@@ -127,11 +132,30 @@ void ExpirationList::insert_thread(TXLib::LinkedCycleUnsafe & link, TimeType exp
 		else
 		{
 			link.insert_single_as_next_of(m_unsorted_link);
+			if (ThreadImpl::get_thread_from_m_expire_link(link).m_expire_time < m_earliest_unsorted_expire_time)
+			{
+				m_earliest_unsorted_expire_time = ThreadImpl::get_thread_from_m_expire_link(link).m_expire_time;
+			}
 		}
 	}
 }
 
-void ExpirationList::sort_unsorted(void)
+void ExpirationList::sort_one_unsorted(void)
+{
+	TX_ASSERT(!m_unsorted_link.is_single());
+
+	TXLib::LinkedCycleUnsafe & link = m_unsorted_link.next();
+	link.remove_from_cycle();
+
+	TXLib::LinkedCycle * iter = &m_sorted_link.prev();
+	while (iter != &m_sorted_link && ThreadImpl::get_thread_from_m_expire_link(*iter).m_expire_time > ThreadImpl::get_thread_from_m_expire_link(link).m_expire_time)
+	{
+		iter = &iter->prev();
+	}
+	link.insert_single_as_next_of(*iter);
+}
+
+void ExpirationList::sort_all_unsorted(TimeType current_time)
 {
 	TXLib::LinkedCycleUnsafe * link = &m_unsorted_link.next();
 	while (link != &m_unsorted_link)
@@ -148,6 +172,8 @@ void ExpirationList::sort_unsorted(void)
 		link = link_next;
 	}
 	link->become_safe();
+
+	m_earliest_unsorted_expire_time = current_time + TimeType::get_max_positive();
 }
 
 TXLib::LinkedCycle & ExpirationList::remove_threads_sharing_smallest_expire_time(void)
@@ -578,6 +604,8 @@ void Scheduler::change_messageblocked_thread_to_paused(ThreadImpl & thread)
 
 void Scheduler::change_expired_sleeping_thread_to_ready_version_list(TimeType time)
 {
+	TX_ASSERT(m_expiration_list.m_earliest_unsorted_expire_time > time);
+
 	if (&m_expiration_list.get_next_thread_link() != &m_expiration_list.get_null_link())
 	{
 		ThreadImpl * thread = & ThreadImpl::get_thread_from_m_expire_link(m_expiration_list.get_next_thread_link());
@@ -616,8 +644,6 @@ void Scheduler::change_expired_sleeping_thread_to_ready_version_list(TimeType ti
 				link = &link->next();
 			}
 			while (link != head);
-
-			m_expiration_list.sort_unsorted();
 		}
 	}
 }
@@ -759,13 +785,32 @@ TimeType Scheduler::get_latest_wakeup_time_in_tick(TimeType time_now)
 void Scheduler::maintenance_procedure(void)
 {
 	TX_ASSERT(__get_PRIMASK() == 0);
-	__disable_irq();
-	__DMB();
 
-	m_expiration_list.sort_unsorted();
+	bool complete = false;
+	while (!complete)
+	{
+		__disable_irq();
+		__DMB();
 
-	__DMB();
-	__enable_irq();
+		if (!m_expiration_list.m_unsorted_link.is_single())
+		{
+			m_expiration_list.sort_one_unsorted();
+		}
+		else
+		{
+			m_expiration_list.m_earliest_unsorted_expire_time = g_system_timer.get_tick() + TimeType::get_max_positive();
+			complete = true;
+		}
+
+		__DMB();
+		__enable_irq();
+	}
+
+//	__disable_irq();
+//	__DMB();
+//	m_expiration_list.sort_all_unsorted(g_system_timer.get_tick());
+//	__DMB();
+//	__enable_irq();
 }
 
 void Scheduler::sleep_procedure(void)
@@ -774,8 +819,10 @@ void Scheduler::sleep_procedure(void)
 	__disable_irq();
 	__DMB();
 
+	SystemTimer & system_timer = RTOSImpl::get_rtos_from_m_scheduler(*this).m_system_timer;
+
 	lock_acquire();
-	TimeType system_time_in_tick = g_system_timer.get_tick();
+	TimeType system_time_in_tick = system_timer.get_tick();
 	TimeType wakeup_time_in_tick = get_latest_wakeup_time_in_tick(system_time_in_tick);
 	lock_release();
 
@@ -790,16 +837,16 @@ void Scheduler::sleep_procedure(void)
 	// Commit to sleep
 
 	size_t tick_until_wakeup = wakeup_time_in_tick - system_time_in_tick;
-	TimeType wakeup_time_in_cycle = g_system_timer.get_core_cycle() + tick_until_wakeup * RTOSImpl::CoreCyclePerTick;
+	TimeType wakeup_time_in_cycle = system_timer.get_core_cycle() + tick_until_wakeup * RTOSImpl::CoreCyclePerTick;
 	TX_ASSERT(TimeType(wakeup_time_in_cycle) > CoreClock::get_cycle_count() + (RTOSImpl::CoreCyclePerTick / 2));
 	CoreInterrupt::reset_counter(wakeup_time_in_cycle - TimeType(CoreClock::get_cycle_count()));
-	g_system_timer.set_max_allowable_tick(tick_until_wakeup);
+	system_timer.set_max_allowable_tick(tick_until_wakeup);
 
 	LowPowerState::enter_sleep_mode();
 
-	TimeType next_systick_time = g_system_timer.update_time(CoreClock::get_cycle_count());
+	TimeType next_systick_time = system_timer.update_time(CoreClock::get_cycle_count());
 	CoreInterrupt::reset_counter(next_systick_time - TimeType(CoreClock::get_cycle_count()));
-	g_system_timer.set_max_allowable_tick(1);
+	system_timer.set_max_allowable_tick(1);
 	CoreInterrupt::clear_systick_interrupt();
 
 	__DMB();
@@ -852,9 +899,9 @@ void Scheduler::pause_thread_impl(ThreadImpl & thread)
 
 
 
-void Scheduler::initialize(FunctionPtr entry, size_t stack_size)
+void Scheduler::initialize(FunctionPtr entry, size_t stack_size, TimeType current_time)
 {
-	m_expiration_list.initialize();
+	m_expiration_list.initialize(current_time);
 	m_sleep_heap.initialize();
 	m_expire_heap.initialize();
 	m_core.initialize();
@@ -873,6 +920,11 @@ void Scheduler::systick_update(TimeType time)
 {
 	lock_acquire();
 	RTOS_PROFILER_START("systick_update");
+
+	if (m_expiration_list.m_earliest_unsorted_expire_time <= time)
+	{
+		m_expiration_list.sort_all_unsorted(time);
+	}
 
 	change_expired_thread_to_ready(time);
 

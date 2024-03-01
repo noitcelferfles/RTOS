@@ -52,6 +52,18 @@ public:
 
 	__attribute__((noreturn)) void initialize(FunctionPtr entry, size_t stack_size, void * mem_ptr, size_t mem_size);
 
+public:
+
+	static RTOSImpl & get_rtos_from_m_scheduler(Scheduler & scheduler)
+	{
+		return *reinterpret_cast<RTOSImpl *>(reinterpret_cast<size_t>(&scheduler) - __builtin_offsetof(RTOSImpl, m_scheduler));
+	}
+
+	static RTOSImpl & get_rtos_from_m_system_timer(SystemTimer & system_timer)
+	{
+		return *reinterpret_cast<RTOSImpl *>(reinterpret_cast<size_t>(&system_timer) - __builtin_offsetof(RTOSImpl, m_system_timer));
+	}
+
 };
 
 

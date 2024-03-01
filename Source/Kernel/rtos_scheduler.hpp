@@ -51,7 +51,6 @@ public:
 	TXLib::LinkedCycle		m_sorted_link;
 	TXLib::LinkedCycle		m_unsorted_link;
 	TimeType							m_earliest_unsorted_expire_time;
-	// Requirements: all threads sharing the smallest expire_time is linked to @m_sorted_link
 
 public:
 	ExpirationList(void) noexcept = default;
@@ -62,7 +61,7 @@ public:
 	void operator=(ExpirationList &&) noexcept = delete;
 
 	bool is_initialized(void) const {return true;}
-	void initialize(void) {}
+	void initialize(TimeType current_time);
 
 	TXLib::LinkedCycle & get_next_thread_link(void)
 	{
@@ -79,13 +78,12 @@ public:
 	void remove(TXLib::LinkedCycleUnsafe & link)
 	{
 		link.remove_from_cycle();
-		sort_unsorted();
 	}
 
 	TXLib::LinkedCycle & remove_threads_sharing_smallest_expire_time(void);
 
-	void sort_unsorted(void);
-
+	void sort_one_unsorted(void);
+	void sort_all_unsorted(TimeType current_time);
 
 };
 
@@ -231,7 +229,7 @@ public:
 
 // High-level API
 
-	__attribute__((noreturn)) void initialize(FunctionPtr entry, size_t stack_size);
+	__attribute__((noreturn)) void initialize(FunctionPtr entry, size_t stack_size, TimeType current_time);
 	void systick_update(TimeType time);
 	inline void kill_thread(ThreadImpl & thread);
 	inline void pause_thread(ThreadImpl & thread);

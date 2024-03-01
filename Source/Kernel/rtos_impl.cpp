@@ -31,7 +31,7 @@ void RTOSImpl::initialize(FunctionPtr entry, size_t stack_size, void * mem_ptr, 
 
 	m_system_timer.initialize();
 	m_mem_allocator.initialize(mem_ptr, mem_size);
-	m_scheduler.initialize(entry, stack_size);
+	m_scheduler.initialize(entry, stack_size, m_system_timer.get_tick());
 }
 
 
